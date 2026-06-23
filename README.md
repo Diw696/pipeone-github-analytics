@@ -1,218 +1,157 @@
 # PipeOne: GitHub DevActivity Analytics Pipeline
 
-> **A Production-Grade ETL Pipeline for Open-Source Intelligence & Repository Health Tracking**  
-> CSE Data Engineering & AI Internship Project | PulseMetrics Startup Challenge
+> **Week 1 Internship Project: Building an API-to-Warehouse Data Pipeline**  
+> CSE Data Engineering & AI Student | PulseMetrics Startup Challenge
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
-[![dbt](https://img.shields.io/badge/dbt-postgres-FF694B.svg)](https://www.getdbt.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B.svg)](https://streamlit.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)](https://www.postgresql.org/)
 [![GitHub API](https://img.shields.io/badge/GitHub-Events_API-181717.svg)](https://docs.github.com/en/rest/activity/events)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## 📋 Business Scenario
+## 📋 What Is This Project?
 
-**PulseMetrics Junior Data Engineer Challenge**
+**PulseMetrics Junior Data Engineer Challenge - Week 1**
 
-PulseMetrics is a fast-growing analytics startup serving SMBs with actionable insights from external APIs. As part of the **H1: APIs to Warehouse** implementation track, this project demonstrates end-to-end pipeline engineering capabilities:
+This is a learning project focused on understanding the fundamentals of data engineering: extracting data from APIs and storing it in a warehouse. The goal for Week 1 is simple:
 
-- **Objective:** Ingest public GitHub event streams (commits, pushes, pull requests, issues) from the GitHub Events API, transform them into analytical models, and deliver insights for tracking repository health and open-source velocity
-- **Target Users:** Tech organizations, DevOps teams, engineering managers, and open-source program offices monitoring developer activity and project trends
-- **Success Criteria:** Automated, scalable pipeline handling high-volume JSON payloads with incremental processing and analytics-ready data models for BI consumption
+- **Objective:** Pull GitHub event data from 3 target open-source repositories and land the raw JSON into PostgreSQL
+- **Focus:** Learn how each tool in the stack works and why it matters
+- **Deliverable:** Working data flow from GitHub API → PostgreSQL, with ability to explain the tech choices
+
+This is NOT about building production-grade analytics, dashboards, or complex transformations yet. Week 1 is about foundations.
 
 ---
 
-## 🏗️ Architecture Overview
+## � Target Repositories
+
+This pipeline tracks activity from these 3 major open-source projects:
+
+1. **[facebook/react](https://github.com/facebook/react)** - A JavaScript library for building user interfaces
+2. **[microsoft/vscode](https://github.com/microsoft/vscode)** - Visual Studio Code source repository
+3. **[automattic/wp-calypso](https://github.com/automattic/wp-calypso)** - The JavaScript and API powered WordPress.com
+
+These repositories were chosen for their high activity levels and diversity in technology stacks.
+
+---
+
+## 🏗️ Week 1 Architecture (Simple)
 
 ```
 ┌─────────────────────────────┐
-│     GitHub Events API       │ (Public event streams: commits, PRs, issues)
+│     GitHub Events API       │ (Public events for 3 repos)
 └──────────────┬──────────────┘
-               │ HTTP Requests (JSON Payloads)
+               │ HTTP GET requests
                ▼
 ┌─────────────────────────────┐
-│      Ingestion Layer        │ Python Scripts (src/ingestion/)
-│                             │ - GitHub API Client
-└──────────────┬──────────────┘ - Event Schema Parsing
-               │                - Rate Limit Handling
-               │ Raw JSON Events
+│   Python Script             │ (src/ingestion/github_client.py)
+│   (github_client.py)        │ - Authenticate with token
+└──────────────┬──────────────┘ - Fetch JSON events
+               │ Raw JSON
                ▼
 ┌─────────────────────────────┐
-│      PostgreSQL Warehouse   │ Docker Container
-│                             │ - Raw Layer (bronze): github_events_raw
-└──────────────┬──────────────┘ - Staging (silver): parsed events
-               │                - Analytics (gold): aggregated metrics
-               ▼
-┌─────────────────────────────┐
-│        dbt Models           │ dbt-postgres (dbt_project/)
-│                             │ - Event type transformations
-└──────────────┬──────────────┘ - Incremental processing
-               │                - Repository health metrics
-               │ Analytics Tables
-               ▼
-┌─────────────────────────────┐
-│     Streamlit Dashboard     │ (src/dashboard/)
-│                             │ - Repo activity trends
-└─────────────────────────────┘ - Developer contribution maps
-                                - Open-source velocity KPIs
+│   PostgreSQL Database       │ (Docker container)
+│   (github_events_raw table) │ - Store JSON as-is
+└─────────────────────────────┘ - One raw table for now
 ```
 
----
-
-## 🛠️ Tech Stack
-
-| Layer              | Technology          | Purpose                                           |
-|--------------------|---------------------|---------------------------------------------------|
-| **Data Ingestion** | Python 3.9+         | GitHub API extraction, JSON parsing, pagination   |
-| **Orchestration**  | Docker Compose      | Containerized services & dependency management    |
-| **Data Warehouse** | PostgreSQL          | JSONB storage, relational models, ACID compliance |
-| **Transformation** | dbt-postgres        | Incremental ELT, event deduplication, aggregations|
-| **Visualization**  | Streamlit           | Interactive DevActivity analytics dashboard       |
-| **Version Control**| Git/GitHub          | Collaboration & CI/CD readiness                   |
+**That's it for Week 1.** No dbt, no Streamlit, no transformations yet.
 
 ---
 
-## 📂 Project Structure
+## 🛠️ Tech Stack (Week 1 Scope)
+
+| Tool               | Why I Picked It                                    | What Breaks If I Remove It                          |
+|--------------------|----------------------------------------------------|-----------------------------------------------------|
+| **Python 3.9+**    | Standard for data engineering, great libraries     | Can't call APIs or process data without a language |
+| **requests**       | Makes HTTP calls simple and reliable               | Can't fetch data from GitHub API                   |
+| **python-dotenv**  | Keeps secrets out of code (security best practice) | Would have to hardcode token (security risk!)       |
+| **PostgreSQL**     | Industry-standard relational database, supports JSON | No place to store data persistently               |
+| **Docker Compose** | Run Postgres locally without manual setup          | Would need to install/configure Postgres manually   |
+| **Git/GitHub**     | Version control and collaboration                  | Can't track changes or share code                   |
+
+**Not using this week:** dbt (no transformations yet), Streamlit (no dashboard yet), Airflow (no orchestration yet)
+
+---
+
+## 📂 Project Structure (Current State)
 
 ```
 pipeone-github-analytics/
 │
 ├── src/
-│   ├── ingestion/              # GitHub API data extraction
-│   │   ├── github_client.py    # GitHub Events API connector
-│   │   ├── event_extractors.py # Event type-specific parsers
-│   │   └── schema_validators.py# JSON schema validation
-│   │
-│   └── dashboard/              # Streamlit analytics frontend
-│       ├── app.py              # Main dashboard application
-│       └── components/         # Reusable visualization components
-│
-├── dbt_project/                # dbt transformation models
-│   ├── models/
-│   │   ├── staging/            # Silver layer: parsed GitHub events
-│   │   │   ├── stg_push_events.sql
-│   │   │   ├── stg_pull_requests.sql
-│   │   │   └── stg_issue_events.sql
-│   │   └── analytics/          # Gold layer: repository metrics
-│   │       ├── repo_activity_daily.sql
-│   │       ├── developer_contributions.sql
-│   │       └── open_source_velocity.sql
-│   ├── tests/                  # Data quality tests
-│   └── dbt_project.yml         # dbt configuration
+│   └── ingestion/
+│       ├── __init__.py
+│       └── github_client.py    # ✅ DONE: API client with auth day 2
 │
 ├── docs/
-│   └── adrs/                   # Architecture Decision Records
+│   ├── adrs/                   # Architecture decisions (to be added)
+│   └── roadmap_3rd_year.md     # Future vision (not Week 1 scope)
 │
-├── docker-compose.yml          # Multi-container orchestration
-├── requirements.txt            # Python dependencies
-├── design_doc.md               # Technical design documentation
-└── README.md                   # This file
+├── .env                        # ✅ DONE: Secrets (not committed) day 2
+├── .env.example                # ✅ DONE: Template for .env day 2
+├── .gitignore                  # ✅ DONE: Protects secrets day 2
+├── docker-compose.yml          # ✅TODO: Postgres container config day 2
+├── requirements.txt            # ✅ DONE: Python dependencies day 2
+└── README.md                   # ✅ DONE: This file
 ```
 
----
-
-## 🗓️ 5-Week Milestone Roadmap
-
-**Internship Period:** June 22, 2026 → July 26, 2026
-
-### **Week 1: Foundation & GitHub API Integration** (June 22-28)
-- [x] Initialize Git repository & project structure
-- [ ] Configure Docker Compose (PostgreSQL + pgAdmin)
-- [ ] Implement GitHub Events API client with authentication
-- [ ] Handle API rate limiting & pagination for event streams
-- [ ] Set up raw JSON ingestion to PostgreSQL (JSONB columns)
-- [ ] Document architecture decisions (ADRs)
-
-### **Week 2: Data Warehouse & dbt Setup** (June 29 - July 5)
-- [ ] Design event-driven schema (star schema for GitHub events)
-- [ ] Create dbt project with staging models for event types
-- [ ] Implement bronze → silver transformations (parse nested JSON)
-- [ ] Build incremental models to handle large event volumes
-- [ ] Add dbt tests for event deduplication and schema validation
-- [ ] Generate dbt documentation with lineage graphs
-
-### **Week 3: Analytics Layer & Repository Metrics** (July 6-12)
-- [ ] Build gold-layer analytics models (daily/weekly aggregations)
-- [ ] Create repository health metrics (commit frequency, PR velocity)
-- [ ] Implement developer contribution tracking and leaderboards
-- [ ] Add event type breakdown analytics (PushEvent, PullRequestEvent, IssuesEvent)
-- [ ] Develop open-source velocity KPIs
-- [ ] Set up dbt macros for reusable event parsing logic
-
-### **Week 4: Dashboard Development** (July 13-19)
-- [ ] Design Streamlit dashboard UI/UX for DevActivity analytics
-- [ ] Connect dashboard to PostgreSQL analytics tables
-- [ ] Build interactive visualizations (activity heatmaps, contribution graphs)
-- [ ] Implement repository filters, date range selectors, and event type toggles
-- [ ] Add real-time refresh capabilities for live GitHub event streams
-- [ ] Create developer leaderboard and trending repositories view
-
-### **Week 5: Production Readiness & Documentation** (July 20-26)
-- [ ] Implement comprehensive logging & monitoring (event pipeline health)
-- [ ] Add error alerting for API failures and data quality issues
-- [ ] Optimize incremental dbt runs for performance at scale
-- [ ] Write comprehensive README & deployment guide
-- [ ] Create demo video showcasing GitHub analytics capabilities
-- [ ] Prepare cloud deployment documentation (AWS RDS/GCP Cloud SQL)
+**Not created yet:** dbt_project/, dashboard/, event parsers, transformations
 
 ---
 
-## 🚀 Quick Start
+## Week 1 Goals (29 Jun – 3 Jul)
+
+- [ ] Docker Compose: Postgres running locally - DONE on 23-06-2026
+- [ ] Python script: pull events from GitHub API for 3-5 chosen repos
+- [ ] Land raw JSON into Postgres (one raw table is enough)
+- [ ] README explains: what does each tool do, why did I pick it, what breaks if I remove it
+- [ ] Friday demo: show data flowing + explain tech stack (3 min)
+
+> Full roadmap and "dream" architecture (dbt, dashboard, streaming) is in `docs/roadmap_3rd_year.md` — not Week 1 scope.
+
+---
+
+## 🚀 Quick Start (Week 1)
 
 ### Prerequisites
 
 - Docker & Docker Compose installed
 - Python 3.9+ installed
 - Git installed
-- GitHub Personal Access Token (PAT) for API authentication ([Generate here](https://github.com/settings/tokens))
+- GitHub Personal Access Token ([Generate here](https://github.com/settings/tokens) - needs `public_repo` scope)
 
-### Installation
+### Setup Steps
 
 ```bash
-# Clone the repository
-git clone https://github.com/Diw696/pipeone-weather-pipeline.git
-cd pipeone-weather-pipeline
+# 1. Clone the repository
+git clone https://github.com/Diw696/pipeone-github-analytics.git
+cd pipeone-github-analytics
 
-# Set up environment variables
+# 2. Set up environment variables
 cp .env.example .env
-# Edit .env and add your GitHub PAT: GITHUB_TOKEN=your_token_here
+# Edit .env and add your GitHub token: GITHUB_TOKEN=your_token_here
 
-# Start Docker containers
-docker-compose up -d
-
-# Install Python dependencies
+# 3. Install Python dependencies
 pip install -r requirements.txt
 
-# Run dbt models
-cd dbt_project
-dbt run --models staging   # Parse raw GitHub events
-dbt run --models analytics # Build repository metrics
-dbt test
+# 4. Start PostgreSQL (TODO: need to create docker-compose.yml first)
+docker-compose up -d
 
-# Launch Streamlit dashboard
-streamlit run src/dashboard/app.py
+# 5. Test the API client
+python src/ingestion/github_client.py
 ```
 
 ---
 
-## 📊 Key Features
+## � Learning Resources
 
-- **High-Volume Event Ingestion:** Handles GitHub's public event stream with rate limiting, pagination, and retry logic
-- **Incremental Processing:** dbt models configured for efficient incremental runs on large JSON payloads
-- **Event Deduplication:** Prevents duplicate processing using GitHub event IDs
-- **Repository Health Tracking:** Monitor commit frequency, pull request velocity, and issue resolution metrics
-- **Developer Analytics:** Contribution leaderboards, activity heatmaps, and collaboration patterns
-- **Open-Source Velocity KPIs:** Track project momentum, community engagement, and development trends
-- **Production-Ready Architecture:** Docker containerization, structured logging, and monitoring capabilities
-
----
-
-## 📖 Documentation
-
-- **[Design Document](design_doc.md):** Technical architecture and implementation details
-- **[ADRs](docs/adrs/):** Architecture Decision Records for key design choices
-- **[dbt Docs](dbt_project/target/index.html):** Auto-generated data lineage (run `dbt docs generate`)
+- **[GitHub Events API Docs](https://docs.github.com/en/rest/activity/events)** - Understanding event types and structure
+- **[PostgreSQL JSON Functions](https://www.postgresql.org/docs/current/functions-json.html)** - Working with JSONB data
+- **[Docker Compose Docs](https://docs.docker.com/compose/)** - Container orchestration basics
+- **[Future Roadmap](docs/roadmap_3rd_year.md)** - Where this project could go (3rd year vision)
 
 ---
 
@@ -229,18 +168,25 @@ CSE Data Engineering & AI Student | Lovely Professional University
 
 ## 📝 License
 
-This project is developed as part of an academic internship program. All rights reserved.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+**MIT License Summary:**
+- ✅ Free to use, modify, and distribute
+- ✅ Can be used commercially
+- ⚠️ Provided "as-is" without warranty
+- 📋 Must include copyright notice in copies
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **PulseMetrics** for providing the internship challenge framework
-- **Lovely Professional University** for academic guidance
-- **GitHub** for providing the Events API and comprehensive documentation
-- **dbt Labs** for modern data transformation tooling
+- **PulseMetrics** for the internship challenge framework
+- **Lovely Professional University** for academic guidance and support
+- **GitHub** for providing free public API access
+- **Open-source communities** behind React, VSCode, and WP-Calypso for building in public
 
 ---
 
-**Status:** 🚧 Week 1 of 5 - Foundation Phase  
-**Last Updated:** June 22, 2026
+**Current Status:** 🚧 Week 1 - Building Foundation  
+**Last Updated:** June 23, 2026  
+**Next Milestone:** Docker Compose + Postgres setup

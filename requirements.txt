@@ -1,0 +1,17 @@
+# Core API and Environment Management
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+
+# Data Processing
+pandas==2.1.4
+
+# Dashboard
+streamlit==1.29.0
+
+# Development and Testing
+pytest==7.4.3
+pytest-cov==4.1.0
