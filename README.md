@@ -93,7 +93,7 @@ pipeone-github-analytics/
 ├── .env                        # ✅ DONE: Secrets (not committed) day 2
 ├── .env.example                # ✅ DONE: Template for .env day 2
 ├── .gitignore                  # ✅ DONE: Protects secrets day 2
-├── docker-compose.yml          # ✅TODO: Postgres container config day 2
+├── docker-compose.yml          # ✅DONE: Postgres container config day 2
 ├── requirements.txt            # ✅ DONE: Python dependencies day 2
 └── README.md                   # ✅ DONE: This file
 ```
