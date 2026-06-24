@@ -176,16 +176,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - ⚠️ Provided "as-is" without warranty
 - 📋 Must include copyright notice in copies
 
----
 
-## 🙏 Acknowledgments
-
-- **PulseMetrics** for the internship challenge framework
-- **Lovely Professional University** for academic guidance and support
-- **GitHub** for providing free public API access
-- **Open-source communities** behind React, VSCode, and WP-Calypso for building in public
-
----
 
 **Current Status:** 🚧 Week 1 - Building Foundation  
 **Last Updated:** June 23, 2026  
