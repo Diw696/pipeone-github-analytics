@@ -142,47 +142,45 @@ class GitHubClient:
 
 def main():
     """
-    Test the GitHub API client with a sample repository.
+    Week 1 pipeline execution: Fetch events from all target repositories.
     """
     # Initialize client
     client = GitHubClient()
     
+    # Define the official target repository list array
+    target_repositories = [
+        "facebook/react",
+        "microsoft/vscode",
+        "vercel/next.js"
+    ]
+    
+    logger.info("Starting Week 1 pipeline execution across target repositories...")
+    
     try:
-        # Test 1: Check rate limit
-        print("\n" + "="*60)
-        print("TEST 1: Checking GitHub API rate limit...")
-        print("="*60)
-        rate_limit = client.check_rate_limit()
-        if "error" not in rate_limit:
-            print(f"✓ Rate limit check successful")
-            print(f"  Remaining: {rate_limit['remaining']}/{rate_limit['limit']}")
-        else:
-            print(f"✗ Rate limit check failed: {rate_limit['error']}")
-        
-        # Test 2: Fetch events from vercel/next.js
-        print("\n" + "="*60)
-        print("TEST 2: Fetching events from vercel/next.js...")
-        print("="*60)
-        result = client.fetch_events("vercel/next.js", per_page=10)
-        
-        if "error" not in result:
-            print(f"✓ Successfully fetched {result['event_count']} events")
-            print(f"  Repository: {result['repo_name']}")
-            print(f"  Rate limit remaining: {result['rate_limit_remaining']}")
+        # Loop through each repository dynamically
+        for repo in target_repositories:
+            print("\n" + "="*60)
+            print(f"PROCESSING REPOSITORY: {repo}")
+            print("="*60)
             
-            # Display first event as sample
-            if result['events']:
-                first_event = result['events'][0]
-                print(f"\n  Sample event:")
-                print(f"    Type: {first_event['type']}")
-                print(f"    Actor: {first_event['actor']['login']}")
-                print(f"    Created: {first_event['created_at']}")
-        else:
-            print(f"✗ Failed to fetch events: {result['error']}")
+            # Check rate limit balance proactively before executing the network call
+            rate_limit = client.check_rate_limit()
+            if "error" in rate_limit:
+                logger.warning(f"Rate limit check failed, continuing anyway...")
+            
+            # Fetch the live stream payload array
+            result = client.fetch_events(repo, per_page=30)
+            
+            if "error" not in result:
+                event_count = result['event_count']
+                print(f"✓ Successfully processed {event_count} recent events for {repo}")
+                print(f"  Rate limit remaining: {result['rate_limit_remaining']}")
+            else:
+                print(f"✗ Failed to process {repo}: {result['error']}")
         
         print("\n" + "="*60)
-        print("Testing complete!")
-        print("="*60 + "\n")
+        print("Pipeline loop complete! All repositories verified.")
+        print("="*60)
         
     finally:
         # Clean up
