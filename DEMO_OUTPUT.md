@@ -202,6 +202,28 @@ GROUP BY repo_name;
 ```
 
 ---
+### "Overall"
+
+GitHub REST API
+        │
+        ▼
+github_client.py
+        │
+        │  (requests)
+        ▼
+Receive JSON events
+        │
+        ▼
+Load secrets (.env)
+        │
+        ▼
+psycopg2 connects to PostgreSQL
+        │
+        ▼
+github_events_raw table
+        │
+        ▼
+verify_pipeline.py
 
 **Demo Confidence:** ✅ READY FOR FRIDAY
 
