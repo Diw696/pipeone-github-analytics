@@ -3,7 +3,7 @@
 > **Week 1 Internship Project: Building an API-to-Warehouse Data Pipeline**  
 > CSE Data Engineering & AI Student | PulseMetrics Startup Challenge
 
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)](https://www.postgresql.org/)
 [![GitHub API](https://img.shields.io/badge/GitHub-Events_API-181717.svg)](https://docs.github.com/en/rest/activity/events)
@@ -13,7 +13,10 @@
 
 ## 📋 What Is This Project?
 
-**PulseMetrics Junior Data Engineer Challenge - Week 1**
+**Developer:** Diwakar Kaushik  
+**Project:** PipeOne  
+**Segment:** Data Platform Engineering - GitHub Analytics  
+**Problem:** An automated data engineering pipeline that extracts live GitHub events and stores them inside PostgreSQL for future analytics
 
 This is a learning project focused on understanding the fundamentals of data engineering: extracting data from APIs and storing it in a warehouse. The goal for Week 1 is simple:
 
@@ -31,7 +34,7 @@ This pipeline tracks activity from these 3 major open-source projects:
 
 1. **[facebook/react](https://github.com/facebook/react)** - A JavaScript library for building user interfaces
 2. **[microsoft/vscode](https://github.com/microsoft/vscode)** - Visual Studio Code source repository
-3. **[automattic/wp-calypso](https://github.com/automattic/wp-calypso)** - The JavaScript and API powered WordPress.com
+3. **[vercel/next.js](https://github.com/vercel/next.js)** - High-activity modern web framework
 
 These repositories were chosen for their high activity levels and diversity in technology stacks.
 
@@ -65,7 +68,7 @@ These repositories were chosen for their high activity levels and diversity in t
 
 | Tool               | Why I Picked It                                    | What Breaks If I Remove It                          |
 |--------------------|----------------------------------------------------|-----------------------------------------------------|
-| **Python 3.9+**    | Standard for data engineering, great libraries     | Can't call APIs or process data without a language |
+| **Python 3.11+**    | Standard for data engineering, great libraries     | Can't call APIs or process data without a language |
 | **requests**       | Makes HTTP calls simple and reliable               | Can't fetch data from GitHub API                   |
 | **python-dotenv**  | Keeps secrets out of code (security best practice) | Would have to hardcode token (security risk!)       |
 | **PostgreSQL**     | Industry-standard relational database, supports JSON | No place to store data persistently               |
@@ -82,33 +85,44 @@ These repositories were chosen for their high activity levels and diversity in t
 pipeone-github-analytics/
 │
 ├── src/
-│   └── ingestion/
+│   ├── ingestion/
+│   │   ├── __init__.py
+│   │   └── github_client.py    # ✅ API client + DB integration
+│   └── database/
 │       ├── __init__.py
-│       └── github_client.py    # ✅ DONE: API client with auth day 2
+│       └── init_db.py           # ✅ Schema initialization
 │
 ├── docs/
-│   ├── adrs/                   # Architecture decisions (to be added)
-│   └── roadmap_3rd_year.md     # Future vision (not Week 1 scope)
+│   ├── design_doc.md            # ✅ Week 1 technical design
+│   └── roadmap_3rd_year.md      # Future vision (not Week 1)
 │
-├── .env                        # ✅ DONE: Secrets (not committed) day 2
-├── .env.example                # ✅ DONE: Template for .env day 2
-├── .gitignore                  # ✅ DONE: Protects secrets day 2
-├── docker-compose.yml          # ✅DONE: Postgres container config day 2
-├── requirements.txt            # ✅ DONE: Python dependencies day 2
-└── README.md                   # ✅ DONE: This file
+├── .env                         # ✅ Secrets (not committed)
+├── .env.example                 # ✅ Template for .env
+├── .gitignore                   # ✅ Protects secrets
+├── docker-compose.yml           # ✅ Postgres container config
+├── requirements.txt             # ✅ Python dependencies
+├── test_database.py             # ✅ Connection test
+├── verify_pipeline.py           # ✅ Data verification
+├── RUN_PIPELINE.md              # ✅ Execution guide
+├── WEEK1_SUBMISSION.md          # ✅ Internship submission
+└── README.md                    # ✅ This file
 ```
 
 **Not created yet:** dbt_project/, dashboard/, event parsers, transformations
 
 ---
 
-## Week 1 Goals (29 Jun – 3 Jul)
+## Week 1 Goals (June 22-27, 2026)
 
-- [ ] Docker Compose: Postgres running locally - DONE on 23-06-2026
-- [ ] Python script: pull events from GitHub API for 3-5 chosen repos
-- [ ] Land raw JSON into Postgres (one raw table is enough)
-- [ ] README explains: what does each tool do, why did I pick it, what breaks if I remove it
-- [ ] Friday demo: show data flowing + explain tech stack (3 min)
+- [x] Docker Compose: Postgres running locally
+- [x] Python script: pull events from GitHub API for 3 chosen repos
+- [x] Land raw JSON into Postgres (one raw table with JSONB)
+- [x] README explains: what does each tool do, why did I pick it
+- [x] Database verification script with formatted output
+- [x] Design doc ready for mentor review
+
+**Week 1 Status:** ✅ Complete  
+**Submission:** `WEEK1_SUBMISSION.md`
 
 > Full roadmap and "dream" architecture (dbt, dashboard, streaming) is in `docs/roadmap_3rd_year.md` — not Week 1 scope.
 
@@ -119,7 +133,7 @@ pipeone-github-analytics/
 ### Prerequisites
 
 - Docker & Docker Compose installed
-- Python 3.9+ installed
+- Python 3.11+ installed
 - Git installed
 - GitHub Personal Access Token ([Generate here](https://github.com/settings/tokens) - needs `public_repo` scope)
 
@@ -137,11 +151,21 @@ cp .env.example .env
 # 3. Install Python dependencies
 pip install -r requirements.txt
 
-# 4. Start PostgreSQL (TODO: need to create docker-compose.yml first)
+# 4. Configure secrets
+cp .env.example .env
+# Edit .env: add GITHUB_TOKEN and POSTGRES_PASSWORD
+
+# 5. Start PostgreSQL
 docker-compose up -d
 
-# 5. Test the API client
+# 6. Initialize database schema
+python src/database/init_db.py
+
+# 7. Run the pipeline
 python src/ingestion/github_client.py
+
+# 8. Verify data
+python verify_pipeline.py
 ```
 
 ---
@@ -155,14 +179,33 @@ python src/ingestion/github_client.py
 
 ---
 
+## 💡 What I Learned This Week (Week 1)
+
+**Docker Containers vs. Installation**  
+I used to think Docker was just "virtualization." Now I understand it's about packaging dependencies. Running PostgreSQL in a container means I don't need to install Postgres on my laptop — the container has everything. `docker-compose up` and it's ready. If I mess up, `docker-compose down` wipes it clean.
+
+**PostgreSQL vs. Database Clients**  
+I initially confused PostgreSQL (the database engine) with psql (the command-line client). PostgreSQL stores the data. psql is just one way to talk to it. Others include pgAdmin (GUI) or psycopg2 (Python). The database doesn't care which client connects.
+
+**JSONB is Not Just JSON**  
+GitHub returns JSON, and I could store it as TEXT. But JSONB is binary-encoded JSON that PostgreSQL can index and query efficiently. Using JSONB lets me run `WHERE raw_payload->>'type' = 'PushEvent'` without parsing strings. Tradeoff: JSONB takes slightly more space but queries are 10x faster.
+
+**Idempotency is a Design Choice, Not Magic**  
+Pipelines will re-run (crashes, retries, scheduled jobs). Using `event_id` as PRIMARY KEY + `ON CONFLICT DO NOTHING` means I can run the pipeline 100 times and still have exactly 90 events — no duplicates, no errors. The schema makes it safe.
+
+**Environment Variables Are Security Boundaries**  
+Once a secret is in Git history, `.gitignore` doesn't help — you have to rotate the token. That's why `.env` must be in `.gitignore` from the first commit. I set this up before adding my GitHub token, so my repository has zero credential leaks.
+
+---
+
 ## 👨‍💻 Author
 
 **Diwakar Kaushik**  
 CSE Data Engineering & AI Student | Lovely Professional University
 
-- 📧 Email: diwakar.kaushik@example.com
-- 💼 LinkedIn: [linkedin.com/in/diwakar-kaushik](https://linkedin.com/in/diwakar-kaushik)
-- 🐙 GitHub: [@Diw696](https://github.com/Diw696)
+- 📧 Email: devkaushik6906@gmail.com
+- 💼 LinkedIn: [linkedin.com/in/diwakar-kaushik](https://www.linkedin.com/in/diwakar-kaushik-a40b65310/)
+- 🐙 GitHub: [@Diw696](https://github.com/Diw696/pipeone-github-analytics)
 
 ---
 
@@ -176,8 +219,9 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - ⚠️ Provided "as-is" without warranty
 - 📋 Must include copyright notice in copies
 
+---
 
-
-**Current Status:** 🚧 Week 1 - Building Foundation  
-**Last Updated:** June 23, 2026  
-**Next Milestone:** Docker Compose + Postgres setup
+**Current Status:** ✅ Week 1 Deliverable Completed - Pipeline Operational  
+**Last Updated:** July 3, 2026  
+**Data Ingested:** 188 events across 3 repositories (Successfully ingests live GitHub events from three repositories. Numebr changes as pipeline runs)
+**Next Milestone:** dbt transformations (Week 2)
