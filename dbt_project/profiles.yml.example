@@ -1,0 +1,36 @@
+# dbt profiles.yml - PostgreSQL Connection Configuration
+# 
+# IMPORTANT: Copy this file to ~/.dbt/profiles.yml (Windows: C:\Users\asus\.dbt\profiles.yml)
+# Then update the password field with your actual PostgreSQL password from .env
+#
+# This file tells dbt HOW to connect to your data warehouse.
+# It lives outside your project repository for security reasons.
+
+pipeone:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      user: pipeone_user
+      password: change_this_password  # IMPORTANT: Replace with actual password from .env file
+      port: 5432
+      dbname: pipeone_warehouse
+      schema: public
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10
+      search_path: public
+
+    prod:
+      type: postgres
+      host: localhost
+      user: pipeone_user
+      password: change_this_password  # IMPORTANT: Replace with actual password from .env file
+      port: 5432
+      dbname: pipeone_warehouse
+      schema: public
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10
+      search_path: public
