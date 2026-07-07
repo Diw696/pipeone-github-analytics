@@ -13,10 +13,10 @@ pipeone:
       type: postgres
       host: localhost
       user: pipeone_user
-      password: change_this_password  # IMPORTANT: Replace with actual password from .env file
+      password: your_secure_password_here  # IMPORTANT: Replace with actual password from .env file
       port: 5432
       dbname: pipeone_warehouse
-      schema: public
+      schema: dbt_dev
       threads: 4
       keepalives_idle: 0
       connect_timeout: 10
@@ -26,10 +26,10 @@ pipeone:
       type: postgres
       host: localhost
       user: pipeone_user
-      password: change_this_password  # IMPORTANT: Replace with actual password from .env file
+      password: your_secure_password_here  # IMPORTANT: Replace with actual password from .env file
       port: 5432
       dbname: pipeone_warehouse
-      schema: public
+      schema: dbt_prod
       threads: 4
       keepalives_idle: 0
       connect_timeout: 10

@@ -1,0 +1,112 @@
+version: 2
+
+# ============================================================================
+# SOURCE: github_raw_source
+# ============================================================================
+# This source represents the raw GitHub events table created by our Week 1
+# ingestion pipeline (src/ingestion/github_client.py).
+#
+# Data Flow:
+#   GitHub API → Python Client → PostgreSQL (public.github_events_raw)
+#
+# Owner: Data Engineering Team
+# Created: Week 1 (July 2026)
+# Updated By: dbt (this file documents it, doesn't create it)
+# ============================================================================
+
+sources:
+  - name: github_raw_source
+    description: >
+      Raw GitHub event data ingested from the GitHub Events API.
+      This source contains unprocessed JSONB payloads for events from three
+      target repositories: facebook/react, microsoft/vscode, and vercel/next.js.
+      
+      Data is loaded via the Python ingestion client and stored exactly as
+      received from the API with no transformations applied.
+      
+      This is the Bronze layer - the source of truth for all downstream transformations.
+
+    database: pipeone_warehouse
+    schema: public
+    
+    # Freshness checks: Alert if data hasn't been updated recently
+    # (This feature will be configured in Week 3 when we add scheduling)
+    # freshness:
+    #   warn_after: {count: 6, period: hour}
+    #   error_after: {count: 12, period: hour}
+    
+    # Load timestamp field for freshness monitoring
+    loaded_at_field: fetched_at
+
+    tables:
+      - name: github_events_raw
+        description: >
+          Raw GitHub events table containing JSONB payloads from the GitHub Events API.
+          Each row represents a single event (PushEvent, PullRequestEvent, IssueEvent, etc.)
+          captured from one of our monitored repositories.
+          
+          Schema:
+            - event_id: Unique identifier from GitHub (PRIMARY KEY)
+            - repo_name: Repository name (e.g., 'facebook/react')
+            - event_type: Event type extracted at ingestion (e.g., 'PushEvent')
+            - fetched_at: Timestamp when our ingestion client retrieved this event
+            - raw_payload: Complete JSONB payload from GitHub API (all nested fields preserved)
+          
+          Idempotency: Guaranteed by PRIMARY KEY on event_id with ON CONFLICT DO NOTHING.
+          Retention: No automatic deletion - historical events are preserved.
+          Update Frequency: Every pipeline run (currently manual, will be scheduled in Week 3).
+
+        columns:
+          - name: event_id
+            description: >
+              Unique event identifier from GitHub. Used as PRIMARY KEY to prevent duplicates.
+              Example: '12345678901234567890'
+            tests:
+              - not_null
+              - unique
+
+          - name: repo_name
+            description: >
+              Full repository name in 'owner/repo' format.
+              Examples: 'facebook/react', 'microsoft/vscode', 'vercel/next.js'
+            tests:
+              - not_null
+
+          - name: event_type
+            description: >
+              GitHub event type extracted at ingestion time for filtering convenience.
+              Common values: 'PushEvent', 'PullRequestEvent', 'IssuesEvent', 'WatchEvent', 'ForkEvent'
+              
+              Note: This is redundant with raw_payload->>'type' but kept for query performance.
+            tests:
+              - not_null
+
+          - name: fetched_at
+            description: >
+              Timestamp (UTC) when our ingestion pipeline retrieved this event from GitHub.
+              Used for freshness monitoring and data quality checks.
+              
+              Note: This is NOT the event creation time (that's in raw_payload->>'created_at').
+            tests:
+              - not_null
+
+          - name: raw_payload
+            description: >
+              Complete JSONB object from GitHub Events API with all nested fields preserved.
+              
+              Structure varies by event_type, but common top-level keys:
+                - id: Event ID (matches event_id column)
+                - type: Event type (matches event_type column)
+                - actor: User who triggered the event (id, login, avatar_url)
+                - repo: Repository information (id, name, url)
+                - payload: Event-specific data (structure varies)
+                - public: Boolean indicating if event is public
+                - created_at: ISO 8601 timestamp from GitHub
+              
+              Storage: JSONB (binary format, indexable, queryable with -> and ->> operators)
+              
+              Downstream Usage:
+                - Silver models parse specific fields from this payload
+                - Gold models aggregate metrics derived from parsed fields
+            tests:
+              - not_null
