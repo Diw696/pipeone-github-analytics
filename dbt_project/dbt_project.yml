@@ -34,3 +34,8 @@ models:
     staging:
       +materialized: view
       +tags: ['staging', 'bronze']
+    
+    # Silver models: Intermediate transformations (flatten JSONB, event-specific parsing)
+    silver:
+      +materialized: view
+      +tags: ['silver', 'intermediate']
