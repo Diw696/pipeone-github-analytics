@@ -1,0 +1,313 @@
+version: 2
+
+# ============================================================================
+# SILVER LAYER SCHEMA DOCUMENTATION & TESTS
+# ============================================================================
+# This file documents Silver layer models and defines automated data quality
+# tests that run on every dbt test or dbt build execution.
+#
+# Test Philosophy:
+#   - Fail fast: Catch data quality issues before they reach dashboards
+#   - Test critical columns: Focus on fields used in joins and aggregations
+#   - Business rules: Validate assumptions (no future dates, no negatives)
+#
+# When tests run:
+#   - dbt test: Runs all tests
+#   - dbt build: Runs models, then tests them
+#   - CI/CD: Should run tests before deploying to production
+# ============================================================================
+
+models:
+  # ==========================================================================
+  # MODEL: int_push_events
+  # ==========================================================================
+  # Silver layer model containing parsed PushEvent data
+  # Grain: One row per PushEvent
+  # ==========================================================================
+  - name: int_push_events
+    description: >
+      Intermediate model that parses PushEvent-specific fields from the Bronze
+      staging layer. Each row represents a single push to a repository branch,
+      containing metadata about the actor, branch reference, and number of commits.
+      
+      This model is materialized as a VIEW for query freshness and storage efficiency.
+      
+      Upstream: stg_github_events (filters to event_type = 'PushEvent')
+      Downstream: Gold layer aggregations (daily commit metrics, contributor stats)
+
+    # Model-level tests (apply to the entire model)
+    # Currently none - all tests are column-specific
+
+    columns:
+      # ----------------------------------------------------------------------
+      # Primary Key
+      # ----------------------------------------------------------------------
+      - name: event_id
+        description: >
+          Unique identifier for this GitHub event. Serves as the primary key.
+          Inherited from Bronze layer (originally from GitHub API response).
+          
+          Format: String of digits (e.g., "12345678901234567890")
+          Uniqueness: Guaranteed by GitHub API
+          Nullability: Never NULL (required by API)
+        tests:
+          - unique:
+              config:
+                severity: error  # Duplicates are critical - fail the build
+                error_if: ">0"   # Fail if any duplicates found
+                warn_if: ">0"    # Also warn (logged even if threshold not met)
+          - not_null:
+              config:
+                severity: error  # NULLs are critical - fail the build
+
+      # ----------------------------------------------------------------------
+      # Dimensional Attributes
+      # ----------------------------------------------------------------------
+      - name: repo_name
+        description: >
+          Full repository name in 'owner/repo' format (e.g., 'facebook/react').
+          Used for filtering and grouping in downstream aggregations.
+          
+          Should always be one of our three monitored repositories:
+            - facebook/react
+            - microsoft/vscode
+            - vercel/next.js
+        tests:
+          - not_null:
+              config:
+                severity: error  # Required for all analyses
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: warn  # Non-critical: log if unexpected repo appears
+                # Note: Set to warn (not error) because we might add repos later
+
+      - name: actor_username
+        description: >
+          GitHub username of the person who triggered this push event.
+          Extracted from: raw_payload -> 'actor' -> 'login'
+          
+          Used for contributor analysis and activity tracking.
+        tests:
+          - not_null:
+              config:
+                severity: warn  # Some events might have deleted accounts (NULL)
+                # Note: Warn instead of error - edge case, not critical
+
+      # ----------------------------------------------------------------------
+      # Push Metadata
+      # ----------------------------------------------------------------------
+      - name: push_id
+        description: >
+          Unique identifier for this push operation (assigned by GitHub).
+          Extracted from: raw_payload -> 'payload' -> 'push_id'
+          
+          Format: Large integer stored as TEXT (GitHub uses 64-bit integers)
+          Example: "9876543210"
+        tests:
+          - not_null:
+              config:
+                severity: warn  # Rarely NULL, but not critical for analytics
+
+      - name: commit_ref
+        description: >
+          Git reference (branch or tag) that was pushed to.
+          Extracted from: raw_payload -> 'payload' -> 'ref'
+          
+          Common formats:
+            - refs/heads/main (main branch)
+            - refs/heads/develop (develop branch)
+            - refs/tags/v1.0.0 (release tag)
+          
+          Used for branch-specific analysis (main vs feature branches).
+        tests:
+          - not_null:
+              config:
+                severity: warn  # Rarely NULL, but not critical
+
+      - name: commit_count
+        description: >
+          Number of commits included in this push event.
+          Extracted from: jsonb_array_length(raw_payload -> 'payload' -> 'commits')
+          
+          Type: INTEGER
+          Range: 0 to ~100 (typical), can be higher for large merges
+          
+          Used for: Daily commit volume metrics, push size analysis
+          
+          Note: Defensive SQL with COALESCE ensures this is never NULL (defaults to 0).
+        tests:
+          - not_null:
+              config:
+                severity: error  # Critical for aggregations (SUM, AVG)
+          # Custom validation: commit_count should never be negative
+          # (This is a business rule test - see tests/no_negative_commit_count.sql)
+
+      # ----------------------------------------------------------------------
+      # Temporal Attributes
+      # ----------------------------------------------------------------------
+      - name: fetched_at
+        description: >
+          Timestamp (UTC) when our ingestion pipeline retrieved this event from GitHub.
+          Inherited from Bronze layer.
+          
+          Type: TIMESTAMP WITH TIME ZONE
+          
+          Note: This is NOT the event creation time (that's in raw_payload->>'created_at').
+          fetched_at represents when WE ingested the data, used for:
+            - Data freshness monitoring
+            - Pipeline debugging (when did we last pull data?)
+            - Deduplication windows
+        tests:
+          - not_null:
+              config:
+                severity: error  # Required for freshness checks
+          # Custom validation: No future timestamps
+          # (Business rule test - see tests/no_future_timestamps.sql)
+
+  # ==========================================================================
+  # MODEL: int_pull_requests
+  # ==========================================================================
+  # Silver layer model containing parsed PullRequestEvent data
+  # Grain: One row per PullRequestEvent
+  # ==========================================================================
+  - name: int_pull_requests
+    description: >
+      Intermediate model that parses PullRequestEvent-specific fields from the
+      Bronze staging layer. Each row represents a single pull request event
+      (opened, closed, merged, synchronized, etc.).
+      
+      This model is materialized as a VIEW for query freshness and storage efficiency.
+      
+      Upstream: stg_github_events (filters to event_type = 'PullRequestEvent')
+      Downstream: Gold layer aggregations (PR velocity, code review metrics)
+
+    columns:
+      # ----------------------------------------------------------------------
+      # Primary Key
+      # ----------------------------------------------------------------------
+      - name: event_id
+        description: >
+          Unique identifier for this GitHub event. Serves as the primary key.
+          Inherited from Bronze layer (originally from GitHub API response).
+          
+          Note: event_id is unique per EVENT, not per PULL REQUEST.
+          The same PR can have multiple events (opened, synchronized, closed).
+          For PR-level uniqueness, use pull_request_id + pr_action.
+        tests:
+          - unique:
+              config:
+                severity: error  # Duplicates indicate data quality issue
+          - not_null:
+              config:
+                severity: error  # Required for all models
+
+      # ----------------------------------------------------------------------
+      # Dimensional Attributes
+      # ----------------------------------------------------------------------
+      - name: repo_name
+        description: >
+          Full repository name in 'owner/repo' format (e.g., 'microsoft/vscode').
+          Used for filtering and grouping in downstream aggregations.
+        tests:
+          - not_null:
+              config:
+                severity: error  # Required for repository-level analysis
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: warn  # Log if unexpected repo appears
+
+      # ----------------------------------------------------------------------
+      # Pull Request Metadata
+      # ----------------------------------------------------------------------
+      - name: pr_action
+        description: >
+          The action that triggered this pull request event.
+          Extracted from: raw_payload -> 'payload' -> 'action'
+          
+          Common values:
+            - opened: New PR created
+            - closed: PR closed (without merge) or merged
+            - reopened: Previously closed PR reopened
+            - synchronize: New commits pushed to PR branch
+            - assigned, unassigned, labeled, unlabeled, etc.
+          
+          Used for PR lifecycle analysis and velocity metrics.
+        tests:
+          - not_null:
+              config:
+                severity: error  # Critical for PR state analysis
+          - accepted_values:
+              values: 
+                - 'opened'
+                - 'closed'
+                - 'reopened'
+                - 'synchronize'
+                - 'assigned'
+                - 'unassigned'
+                - 'review_requested'
+                - 'review_request_removed'
+                - 'labeled'
+                - 'unlabeled'
+                - 'edited'
+                - 'merged'
+              config:
+                severity: warn  # New actions might appear - log but don't fail
+                # GitHub occasionally adds new action types
+
+      - name: pull_request_id
+        description: >
+          GitHub's internal unique identifier for the pull request.
+          Extracted from: raw_payload -> 'payload' -> 'pull_request' -> 'id'
+          
+          Type: Large integer stored as TEXT
+          Uniqueness: Globally unique across all GitHub PRs
+          
+          Note: Different from PR number (which is repo-specific).
+            - pull_request_id: 987654321 (unique globally)
+            - PR number: #123 (unique per repository)
+        tests:
+          - not_null:
+              config:
+                severity: error  # Required for PR tracking
+          # Note: Not testing for uniqueness because the same PR can have
+          # multiple events (opened, then synchronized, then closed)
+
+      - name: pr_title
+        description: >
+          The title of the pull request.
+          Extracted from: raw_payload -> 'payload' -> 'pull_request' -> 'title'
+          
+          Used for: Search, display, NLP analysis (future feature)
+          
+          Note: Can contain special characters, emojis, markdown, etc.
+        
+
+      - name: pr_author
+        description: >
+          GitHub username of the person who created the pull request.
+          Extracted from: raw_payload -> 'payload' -> 'pull_request' -> 'user' -> 'login'
+          
+          Note: This is the PR AUTHOR, which may differ from the event ACTOR.
+            - pr_author: Who opened the PR
+            - actor (not in this model): Who triggered this specific event
+              (e.g., someone else might close/merge the PR)
+       
+
+      # ----------------------------------------------------------------------
+      # Temporal Attributes
+      # ----------------------------------------------------------------------
+      - name: fetched_at
+        description: >
+          Timestamp (UTC) when our ingestion pipeline retrieved this event.
+          Inherited from Bronze layer.
+          
+          Type: TIMESTAMP WITH TIME ZONE
+          Used for data freshness monitoring and pipeline debugging.
+        tests:
+          - not_null:
+              config:
+                severity: error  # Required for freshness checks
+          # Custom validation: No future timestamps
+          # (Business rule test - see tests/no_future_timestamps.sql)
