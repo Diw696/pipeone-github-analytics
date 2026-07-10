@@ -1,227 +1,398 @@
-# PipeOne: GitHub DevActivity Analytics Pipeline
+# PipeOne
 
-> **Week 1 Internship Project: Building an API-to-Warehouse Data Pipeline**  
-> CSE Data Engineering & AI Student | PulseMetrics Startup Challenge
+**A data engineering project demonstrating end-to-end GitHub analytics using ELT patterns and the Medallion Architecture.**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
+[![dbt](https://img.shields.io/badge/dbt-1.7.4-FF6849.svg)](https://www.getdbt.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 [![GitHub API](https://img.shields.io/badge/GitHub-Events_API-181717.svg)](https://docs.github.com/en/rest/activity/events)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## 📋 What Is This Project?
+## Project Overview
 
-**Developer:** Diwakar Kaushik  
-**Project:** PipeOne  
-**Segment:** Data Platform Engineering - GitHub Analytics  
-**Problem:** An automated data engineering pipeline that extracts live GitHub events and stores them inside PostgreSQL for future analytics
+PipeOne is a complete data platform that ingests live GitHub events from major open-source repositories, transforms them through a structured medallion architecture, and ensures data quality with automated tests.
 
-This is a learning project focused on understanding the fundamentals of data engineering: extracting data from APIs and storing it in a warehouse. The goal for Week 1 is simple:
+**The Problem:** Organizations tracking developer activity across multiple GitHub repositories face fragmentation. Data lives in separate places with no unified view.
 
-- **Objective:** Pull GitHub event data from 3 target open-source repositories and land the raw JSON into PostgreSQL
-- **Focus:** Learn how each tool in the stack works and why it matters
-- **Deliverable:** Working data flow from GitHub API → PostgreSQL, with ability to explain the tech choices
+**The Solution:** An automated ELT pipeline that continuously captures GitHub events, stores them durably in PostgreSQL,transforms raw GitHub event data into analytics-ready relational models using dbt, and validates everything with automated tests.
 
-This is NOT about building production-grade analytics, dashboards, or complex transformations yet. Week 1 is about foundations.
+**Why This Matters:** This project demonstrates production data engineering patterns: idempotent loading, JSONB handling, declarative transformations, and data quality validation—all critical for real-world analytics platforms.
 
 ---
 
-## � Target Repositories
-
-This pipeline tracks activity from these 3 major open-source projects:
-
-1. **[facebook/react](https://github.com/facebook/react)** - A JavaScript library for building user interfaces
-2. **[microsoft/vscode](https://github.com/microsoft/vscode)** - Visual Studio Code source repository
-3. **[vercel/next.js](https://github.com/vercel/next.js)** - High-activity modern web framework
-
-These repositories were chosen for their high activity levels and diversity in technology stacks.
-
----
-
-## 🏗️ Week 1 Architecture (Simple)
+## Current Status
 
 ```
-┌─────────────────────────────┐
-│     GitHub Events API       │ (Public events for 3 repos)
-└──────────────┬──────────────┘
-               │ HTTP GET requests
-               ▼
-┌─────────────────────────────┐
-│   Python Script             │ (src/ingestion/github_client.py)
-│   (github_client.py)        │ - Authenticate with token
-└──────────────┬──────────────┘ - Fetch JSON events
-               │ Raw JSON
-               ▼
-┌─────────────────────────────┐
-│   PostgreSQL Database       │ (Docker container)
-│   (github_events_raw table) │ - Store JSON as-is
-└─────────────────────────────┘ - One raw table for now
+✅ Week 1: API Ingestion & Raw Storage
+✅ Week 2: Bronze & Silver Layers + Data Quality Tests (26/26 PASSING)
+🟡 Week 3: Gold Layer (Planned)
+⚪ Week 4: Dashboard & Deployment (Planned)
 ```
 
-**That's it for Week 1.** No dbt, no Streamlit, no transformations yet.
+**Key Metrics:**
+- **Data Quality:** PASS=26, WARN=0, ERROR=0
+- **Models Built:** 1 source, 3 models, 26 tests
+- **Test Coverage:** Schema tests, business validations, source tests
+- **Code Quality:** Version controlled, documented, tested
 
 ---
 
-## 🛠️ Tech Stack (Week 1 Scope)
+## Architecture
 
-| Tool               | Why I Picked It                                    | What Breaks If I Remove It                          |
-|--------------------|----------------------------------------------------|-----------------------------------------------------|
-| **Python 3.11+**    | Standard for data engineering, great libraries     | Can't call APIs or process data without a language |
-| **requests**       | Makes HTTP calls simple and reliable               | Can't fetch data from GitHub API                   |
-| **python-dotenv**  | Keeps secrets out of code (security best practice) | Would have to hardcode token (security risk!)       |
-| **PostgreSQL**     | Industry-standard relational database, supports JSON | No place to store data persistently               |
-| **Docker Compose** | Run Postgres locally without manual setup          | Would need to install/configure Postgres manually   |
-| **Git/GitHub**     | Version control and collaboration                  | Can't track changes or share code                   |
-
-**Not using this week:** dbt (no transformations yet), Streamlit (no dashboard yet), Airflow (no orchestration yet)
+GitHub Events API
+        │
+        ▼
+Python (Extract + Load)
+        │
+        ▼
+PostgreSQL
+github_events_raw (JSONB)
+        │
+        ▼
+dbt Bronze
+(stg_github_events)
+        │
+        ▼
+dbt Silver
+(int_push_events / int_pull_requests)
+        │
+        ▼
+Automated Data Quality Tests
+        │
+        ▼
+Analytics-Ready Data
 
 ---
 
-## 📂 Project Structure (Current State)
+## Medallion Architecture
+
+**Bronze Layer**
+- Raw data from GitHub API stored as-is in JSONB format
+- Single table: `stg_github_events`
+- No transformations—preserves original structure for debugging
+- Enables flexible querying without schema changes
+
+**Silver Layer**
+- Structured, event-specific transformations
+- Two models: `int_push_events`, `int_pull_requests`
+- JSONB parsed into clean relational columns
+- Ready for downstream analysis
+- Includes Automated Data Quality Framework
+
+**Gold Layer**
+- **Status:** Not yet implemented
+- Planned for Week 3: aggregated metrics, fact tables, dimension tables
+- Will be optimized for dashboard and reporting queries
+
+┌──────────────────────────────────────────────────────────────┐
+│           pipeone_warehouse (PostgreSQL Database)            │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  public schema                                               │
+│  ┌──────────────────────────────────────────────┐            │
+│  │ github_events_raw (Table)                    │            │
+│  │ Raw Landing Table (JSONB)                    │            │
+│  └──────────────────┬───────────────────────────┘            │
+│                     │                                        │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────┐            │
+│  │ stg_github_events (View)                     │            │
+│  │ Bronze Layer                                 │            │
+│  │ • Source mapping                             │            │
+│  │ • Timestamp standardization                  │            │
+│  │ • Preserve raw JSONB                         │            │
+│  └──────────────────┬───────────────────────────┘            │
+│                     │                                        │
+│          ┌──────────┴──────────┐                             │
+│          ▼                     ▼                             │
+│  ┌─────────────────┐   ┌────────────────────┐               │
+│  │ int_push_events │   │ int_pull_requests  │               │
+│  │ Silver Layer    │   │ Silver Layer       │               │
+│  │ • Push metrics  │   │ • PR metrics       │               │
+│  │ • Flat schema   │   │ • Flat schema      │               │
+│  └─────────────────┘   └────────────────────┘               │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+---
+
+## Project Structure
 
 ```
 pipeone-github-analytics/
 │
 ├── src/
 │   ├── ingestion/
-│   │   ├── __init__.py
-│   │   └── github_client.py    # ✅ API client + DB integration
+│   │   ├── github_client.py          # GitHub API integration
+│   │   └── __init__.py
 │   └── database/
-│       ├── __init__.py
-│       └── init_db.py           # ✅ Schema initialization
+│       ├── init_db.py                # Schema initialization
+│       └── __init__.py
+│
+├── dbt_project/                      # dbt transformation project
+│   ├── dbt_project.yml               # dbt configuration
+│   ├── profiles.yml.example          # Connection template
+│   ├── setup_dbt_profile.ps1         # Profile automation
+│   ├── models/
+│   │   ├── staging/
+│   │   │   ├── _sources.yml          # Source definitions + auto-tests
+│   │   │   └── stg_github_events.sql # Bronze passthrough view
+│   │   └── silver/
+│   │       ├── int_push_events.sql   # PushEvent transformation
+│   │       ├── int_pull_requests.sql # PullRequestEvent transformation
+│   │       └── _schema.yml           # Schema & column tests
+│   ├── tests/
+│   │   ├── no_future_timestamps.sql       # Business validation
+│   │   ├── push_model_integrity.sql       # Event type validation
+│   │   └── no_negative_commit_count.sql   # Data quality check
+│   └── logs/
+│       └── dbt.log                   # Execution logs
 │
 ├── docs/
-│   ├── design_doc.md            # ✅ Week 1 technical design
-│   └── roadmap_3rd_year.md      # Future vision (not Week 1)
+│   ├── design_doc.md                 # Architecture & design decisions
+│   ├── week1/WEEK1_SUBMISSION.md     # Week 1 deliverable
+│   └── week2/
+│       ├── WEEK2_ARCHITECTURE.md
+│       ├── WEEK2_DAY1_SUMMARY.md
+│       ├── WEEK2_DAY2_BRONZE_LAYER.md
+│       ├── WEEK2_DAY3_SILVER_LAYER.md
+│       └── WEEK2_DAY4_TESTING.md
 │
-├── .env                         # ✅ Secrets (not committed)
-├── .env.example                 # ✅ Template for .env
-├── .gitignore                   # ✅ Protects secrets
-├── docker-compose.yml           # ✅ Postgres container config
-├── requirements.txt             # ✅ Python dependencies
-├── test_database.py             # ✅ Connection test
-├── verify_pipeline.py           # ✅ Data verification
-├── RUN_PIPELINE.md              # ✅ Execution guide
-├── WEEK1_SUBMISSION.md          # ✅ Internship submission
-└── README.md                    # ✅ This file
+├── .env                              # Secrets (not committed)
+├── .env.example                      # Template
+├── .gitignore
+├── docker-compose.yml                # PostgreSQL container
+├── requirements.txt                  # Python dependencies
+├── test_database.py                  # Connection verification
+├── verify_pipeline.py                # Data verification
+└── README.md
 ```
 
-**Not created yet:** dbt_project/, dashboard/, event parsers, transformations
+---
+
+## Tech Stack
+
+| Component | Tool | Why |
+|-----------|------|-----|
+| **Language** | Python + SQL | Best tools for their jobs |
+| **API** | GitHub Events API | Real-time, public, well-documented |
+| **Database** | PostgreSQL | Powerful, free, excellent JSON support |
+| **Containers** | Docker Compose | Reproducible local setup |
+| **Transform** | dbt | Dependency tracking, testing, documentation |
+| **Version Control** | Git + GitHub | Essential for collaboration |
 
 ---
 
-## Week 1 Goals (June 22-27, 2026)
+## ELT Pipeline
 
-- [x] Docker Compose: Postgres running locally
-- [x] Python script: pull events from GitHub API for 3 chosen repos
-- [x] Land raw JSON into Postgres (one raw table with JSONB)
-- [x] README explains: what does each tool do, why did I pick it
-- [x] Database verification script with formatted output
-- [x] Design doc ready for mentor review
+This project uses **ELT** (Extract → Load → Transform) instead of ETL:
 
-**Week 1 Status:** ✅ Complete  
-**Submission:** `WEEK1_SUBMISSION.md`
+- **Extract:** Python fetches events from GitHub API
+- **Load:** Raw JSON stored immediately in PostgreSQL (preserves original structure)
+- **Transform:** dbt transforms data into business models (SQL in version control)
 
-> Full roadmap and "dream" architecture (dbt, dashboard, streaming) is in `docs/roadmap_3rd_year.md` — not Week 1 scope.
+**Why ELT?**
+- Preserve raw data for debugging and re-transformation
+- Transform logic stays in version control (SQL)
+- Easy to re-run transformations without re-ingesting
+- Cost-effective: leverage database compute power
+- Scales better than ETL for data volumes
 
 ---
 
-## 🚀 Quick Start (Week 1)
+## Data Quality
+
+**26 Automated Tests Currently**
+
+| Type | Count | Purpose |
+|------|-------|---------|
+| Schema Tests | 13 | Unique, not-null, accepted-values on key columns |
+| Singular Tests | 3 | Business rules: no future timestamps, no negative counts, event type validation |
+| Source Tests | 6 | Auto-generated source freshness and relationship tests |
+| **Total** | **26** | **PASS=26, WARN=0, ERROR=0** |
+
+**Why Testing Matters:**
+- Catches data quality issues before they reach dashboards
+- Developers can refactor with confidence
+- Production data is always trustworthy
+- Tests run automatically on every build
+
+---
+
+## Quick Start
 
 ### Prerequisites
 
-- Docker & Docker Compose installed
-- Python 3.11+ installed
-- Git installed
-- GitHub Personal Access Token ([Generate here](https://github.com/settings/tokens) - needs `public_repo` scope)
+- Docker & Docker Compose
+- Python 3.11+
+- GitHub Personal Access Token ([generate here](https://github.com/settings/tokens) with `public_repo` scope)
 
-### Setup Steps
+### Setup
 
 ```bash
-# 1. Clone the repository
+# Clone repository
 git clone https://github.com/Diw696/pipeone-github-analytics.git
 cd pipeone-github-analytics
 
-# 2. Set up environment variables
+# Create environment file
 cp .env.example .env
-# Edit .env and add your GitHub token: GITHUB_TOKEN=your_token_here
 
-# 3. Install Python dependencies
+# Edit .env with your credentials:
+# GITHUB_TOKEN=your_token_here
+# POSTGRES_PASSWORD=your_password
+# DB_NAME=github_analytics
+```
+
+### Week 1: Ingestion & Storage
+
+```bash
+# Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure secrets
-cp .env.example .env
-# Edit .env: add GITHUB_TOKEN and POSTGRES_PASSWORD
-
-# 5. Start PostgreSQL
+# Start PostgreSQL
 docker-compose up -d
 
-# 6. Initialize database schema
+# Initialize database
 python src/database/init_db.py
 
-# 7. Run the pipeline
+# Test connection
+python test_database.py
+
+# Ingest GitHub events
 python src/ingestion/github_client.py
 
-# 8. Verify data
+# Verify data
 python verify_pipeline.py
+```
+
+### Week 2: Transformation & Testing
+
+```bash
+# Navigate to dbt project
+cd dbt_project
+
+# Configure dbt profile (Windows PowerShell)
+.\setup_dbt_profile.ps1
+
+# Or manually edit profiles.yml with your PostgreSQL credentials
+
+# Parse models
+dbt parse
+
+#Verification 
+dbt debug
+
+# Build Bronze & Silver layers
+dbt run
+
+# Execute all tests
+dbt test
+
+# Or run both at once
+dbt build
+```
+
+### Expected Output
+
+```
+Running with dbt=1.7.4
+Found 3 models, 26 tests, 1 source, 0 exposures
+
+Building...
+Completed successfully
+
+Done. PASS=26 WARN=0 ERROR=0 SKIP=0 TOTAL=26
+```
+
+### Verify Results
+
+```bash
+# Generate and view dbt docs
+dbt docs generate
+dbt docs serve  # Visit http://localhost:8000
+
+# Or query PostgreSQL directly
+psql -U postgres -d github_analytics
+
+# Inside psql:
+SELECT * FROM stg_github_events LIMIT 5;
+SELECT * FROM int_push_events LIMIT 5;
+SELECT * FROM int_pull_requests LIMIT 5;
 ```
 
 ---
 
-## � Learning Resources
+## Key Learnings
 
-- **[GitHub Events API Docs](https://docs.github.com/en/rest/activity/events)** - Understanding event types and structure
-- **[PostgreSQL JSON Functions](https://www.postgresql.org/docs/current/functions-json.html)** - Working with JSONB data
-- **[Docker Compose Docs](https://docs.docker.com/compose/)** - Container orchestration basics
-- **[Future Roadmap](docs/roadmap_3rd_year.md)** - Where this project could go (3rd year vision)
+**Week 1: API to Warehouse**
+- GitHub Events API structure and rate limiting
+- PostgreSQL JSONB for flexible schema storage
+- Idempotent pipelines (PRIMARY KEY + ON CONFLICT DO NOTHING)
+- Docker Compose for local reproducibility
 
----
+**Week 2: Transform with dbt**
+- JSONB operators (`->`, `->>`, `jsonb_array_length()`)
+- dbt `ref()` for dependency tracking and lineage
+- dbt source definitions and auto-generated tests
+- Schema tests vs. singular (custom) tests
+- Materialization choices (VIEW vs TABLE)
 
-## 💡 What I Learned This Week (Week 1)
-
-**Docker Containers vs. Installation**  
-I used to think Docker was just "virtualization." Now I understand it's about packaging dependencies. Running PostgreSQL in a container means I don't need to install Postgres on my laptop — the container has everything. `docker-compose up` and it's ready. If I mess up, `docker-compose down` wipes it clean.
-
-**PostgreSQL vs. Database Clients**  
-I initially confused PostgreSQL (the database engine) with psql (the command-line client). PostgreSQL stores the data. psql is just one way to talk to it. Others include pgAdmin (GUI) or psycopg2 (Python). The database doesn't care which client connects.
-
-**JSONB is Not Just JSON**  
-GitHub returns JSON, and I could store it as TEXT. But JSONB is binary-encoded JSON that PostgreSQL can index and query efficiently. Using JSONB lets me run `WHERE raw_payload->>'type' = 'PushEvent'` without parsing strings. Tradeoff: JSONB takes slightly more space but queries are 10x faster.
-
-**Idempotency is a Design Choice, Not Magic**  
-Pipelines will re-run (crashes, retries, scheduled jobs). Using `event_id` as PRIMARY KEY + `ON CONFLICT DO NOTHING` means I can run the pipeline 100 times and still have exactly 90 events — no duplicates, no errors. The schema makes it safe.
-
-**Environment Variables Are Security Boundaries**  
-Once a secret is in Git history, `.gitignore` doesn't help — you have to rotate the token. That's why `.env` must be in `.gitignore` from the first commit. I set this up before adding my GitHub token, so my repository has zero credential leaks.
+**Data Quality & Testing**
+- Catching issues before they reach dashboards
+- Schema tests for fast validation
+- Custom SQL tests for business rules
+- Test failures as clues, not blockers
 
 ---
 
-## 👨‍💻 Author
+## Design Decisions
+
+**Why PostgreSQL JSONB?**
+- Bronze (Week 1): Store GitHub's nested JSON as-is for flexibility
+- Silver (Week 2): Parse into relational columns for analysis
+- Three-layer approach: flexibility (raw) → structure (transform) → performance (aggregate)
+
+**Why Medallion Architecture?**
+- Bronze: Single source of truth (raw, unmodified)
+- Silver: Clean, business-specific models ready for analysis
+- Gold: Aggregated, optimized for dashboards (not yet built)
+- Each layer independently queryable, interconnected via dbt dependencies
+
+**Why dbt?**
+- SQL is the analytics standard
+- Automatic dependency tracking and build ordering
+- Testing and documentation built-in
+- Easy to refactor and version control transformations
+
+---
+
+## Roadmap
+
+
+🥇 Gold Layer
+
+📊 Dashboard
+
+☁ Deployment
+
+⚡ CI/CD
+
+
+## Author
 
 **Diwakar Kaushik**  
 CSE Data Engineering & AI Student | Lovely Professional University
 
-- 📧 Email: devkaushik6906@gmail.com
-- 💼 LinkedIn: [linkedin.com/in/diwakar-kaushik](https://www.linkedin.com/in/diwakar-kaushik-a40b65310/)
-- 🐙 GitHub: [@Diw696](https://github.com/Diw696/pipeone-github-analytics)
+- 📧 [devkaushik6906@gmail.com](mailto:devkaushik6906@gmail.com)
+- 💼 [LinkedIn](https://www.linkedin.com/in/diwakar-kaushik-a40b65310/)
+- 🐙 [GitHub](https://github.com/Diw696)
 
 ---
 
-## 📝 License
+## License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-**MIT License Summary:**
-- ✅ Free to use, modify, and distribute
-- ✅ Can be used commercially
-- ⚠️ Provided "as-is" without warranty
-- 📋 Must include copyright notice in copies
-
----
-
-**Current Status:** ✅ Week 1 Deliverable Completed - Pipeline Operational  
-**Last Updated:** July 3, 2026  
-**Data Ingested:** 188 events across 3 repositories (Successfully ingests live GitHub events from three repositories. Numebr changes as pipeline runs)
-**Next Milestone:** dbt transformations (Week 2)
