@@ -1,0 +1,427 @@
+version: 2
+
+# ============================================================================
+# GOLD LAYER DATA QUALITY PLATFORM CONFIGURATION
+# ============================================================================
+
+models:
+  # ==========================================================================
+  # DIMENSION: dim_repository
+  # ==========================================================================
+  - name: dim_repository
+    description: >
+      Gold layer dimension table containing repository master data.
+      Grain: One row per unique repository (repo_name).
+    columns:
+      - name: repo_id
+        description: "Surrogate key - MD5 hash of repo_name. Format: 32-character hex string."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: repo_name
+        description: "Natural business key - Repository identifier in 'owner/repo' format."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: error
+
+      - name: owner
+        description: "Repository organization extracted via split_part()."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: language
+        description: "Primary programming language sourced from repository metadata."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: stars
+        description: "Cumulative star count recorded at time of execution."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: total_pushes
+        description: "Cumulative count of historical push events."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_commits
+        description: "Cumulative sum of commits across all recorded push entries."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_pr_events
+        description: "Cumulative count of historical pull request lifecycle events."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: first_active_date
+        description: "Earliest recorded activity date in the warehouse."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: last_active_date
+        description: "Latest recorded activity date indicating data freshness."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  # ==========================================================================
+  # DIMENSION: dim_contributor
+  # ==========================================================================
+  - name: dim_contributor
+    description: >
+      Gold layer dimension table tracking unified contributor identities.
+      Grain: One row per unique GitHub username.
+    columns:
+      - name: contrib_id
+        description: "Surrogate key - MD5 hash of the natural username string."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: username
+        description: "Natural business key - GitHub handle login identifier."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_push_events
+        description: "Cumulative volume of push triggers executed by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_commits
+        description: "Cumulative individual commit additions logged by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_pr_events
+        description: "Cumulative pull request lifecycle events authored by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: contrib_type
+        description: "Behavioral segmentation flag based on metric distribution."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['push_only', 'pr_only', 'both', 'unknown']
+              config:
+                severity: error
+
+      - name: first_active_date
+        description: "Earliest tracking instance date for this individual."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: last_active_date
+        description: "Most recent tracking instance date used for inactivity tracing."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  # ==========================================================================
+  # FACT: fct_github_daily_activity
+  # ==========================================================================
+  - name: fct_github_daily_activity
+    description: >
+      Gold layer fact table tracking daily activity.
+      - name: repo_id
+        description: "Foreign key mapping back to dim_repository."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - relationships:
+              to: ref('dim_repository')
+              field: repo_id
+              config:
+                severity: error
+
+      - name: repo_name
+        description: "Repository name used for filtering and reporting.."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: error
+
+      - name: activity_date
+        description: "Snapshot calendar date partition point."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: push_count
+        description: "Total push operations processed during snapshot window."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: commit_count
+        description: "Total granular code commits generated during snapshot window."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: push_avg_commits
+        description: "Average code commit weight payload tracking metric."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_event_count
+        description: "Aggregated pull request interaction loops logged."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_opened
+        description: "Volume of new work files introduced to the code tree."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_closed
+        Number of pull request closed/
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_merged
+        description: "Volume of code additions successfully accepted."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_other_events
+        description: "Operational system tracking actions (labels, assignments)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_merged_pct
+        description: "Calculated code acceptance rate metric. Intentionally permits NULL on push-only days."
+        # Crucial Optimization: Removed the strict not_null test block to eradicate false alarms
+
+      - name: total_activity_count
+        description: "Sum balance of combined pipeline events."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  # ==========================================================================
+  # FACT: fct_contributor_daily_activity
+  # ==========================================================================
+  - name: fct_contributor_daily_activity
+    description: >
+      Gold layer fact table containing granular contributor interaction histories per project[cite: 1].
+      Grain: One row per (contributor, repository, date) combination[cite: 1].
+    columns:
+      - name: contrib_id
+        description: "Foreign key mapping back to dim_contributor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - relationships:
+              to: ref('dim_contributor')
+              field: contrib_id
+              config:
+                severity: error
+
+      - name: repo_id
+        description: "Foreign key mapping back to dim_repository."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - relationships:
+              to: ref('dim_repository')
+              field: repo_id
+              config:
+                severity: error
+
+      - name: username
+        description: "Denormalized business key tracking actor identity handles."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: repo_name
+        description: "Denormalized business key tracking target repositories."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: error
+
+      - name: activity_date
+        description: "Calendar execution tracking date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: push_count
+        description: "Actor transaction volume count for push sequences."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: commits_in_pushes
+        description: "Sum of individual commit traces generated by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_event_count
+        description: "Total interaction loop strings authored by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_opened
+        description: "New work structures opened by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_closed
+        description: "Total structural completions triggered by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_merged
+        description: "Total structural acceptances authored by actor."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_other_events
+        description: "Other pull request actions such as labeling, assignment, or review requests. ."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_activity_count
+        description: "Unified activity metric used for dashboard heatmap rendering."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: pr_merged_pct
+        description: "Calculated individual completion rate index. Intentionally permits NULL on push-only days."
+        # Crucial Optimization: Removed the strict not_null test block to eradicate false alarms
+
+      - name: contribution_type
+        description: "Daily work pattern segmentation tag for actor behavior analysis."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['push_only', 'pr_only', 'both', 'unknown']
+              config:
+                severity: error
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error
