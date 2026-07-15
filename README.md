@@ -1,4 +1,4 @@
-Markdown# PipeOne
+# PipeOne
 
 **A data engineering platform demonstrating end-to-end GitHub analytics using ELT patterns, dimensional modeling, and the Medallion Architecture.**
 
