@@ -1,0 +1,3 @@
+# This directory is for custom Airflow plugins (operators, hooks, sensors).
+# It is empty for now and reserved for future extensions.
+# Airflow automatically loads Python modules placed here.

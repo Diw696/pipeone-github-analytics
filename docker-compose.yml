@@ -1,6 +1,32 @@
-
+# =============================================================================
+# PipeOne — Docker Compose
+# =============================================================================
+#
+# Services (in startup order):
+#
+#   warehouse           — PostgreSQL 15 data warehouse (EXISTING, unchanged)
+#   airflow-postgres    — PostgreSQL 15 for Airflow internal metadata (NEW)
+#   airflow-init        — One-time setup: migrate DB + create admin user (NEW)
+#   airflow-webserver   — Airflow UI at http://localhost:8080 (NEW)
+#   airflow-scheduler   — Airflow DAG executor (NEW)
+#
+# Usage:
+#   docker compose up -d              # Start everything
+#   docker compose up warehouse -d    # Start only the data warehouse
+#   docker compose logs -f airflow-scheduler  # Follow scheduler logs
+#
+# Prerequisites:
+#   - Copy .env.example to .env and fill in ALL variables before running
+#   - Docker Desktop must be running
+# =============================================================================
 
 services:
+
+  # ---------------------------------------------------------------------------
+  # EXISTING: PostgreSQL Data Warehouse
+  # This service is UNCHANGED from the original configuration.
+  # It holds the raw ingestion table (github_events_raw) and dbt output schemas.
+  # ---------------------------------------------------------------------------
   warehouse:
     image: postgres:15-alpine
     container_name: pipeone_postgres_warehouse
@@ -10,10 +36,212 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
+      # Exposed to host so local tools (psql, DBeaver) can still connect
       - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - pipeone_net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
 
+  # ---------------------------------------------------------------------------
+  # NEW: PostgreSQL for Airflow Metadata
+  #
+  # Why a separate database?
+  # Airflow needs its own PostgreSQL to store DAG run history, task states,
+  # XCom values, and user sessions. Sharing the warehouse DB would mix
+  # pipeline data with orchestration metadata — a violation of separation
+  # of concerns. This service is NOT exposed to the host.
+  # ---------------------------------------------------------------------------
+  airflow-postgres:
+    image: postgres:15-alpine
+    container_name: pipeone_airflow_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    networks:
+      - pipeone_net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # NEW: Airflow Init (runs once, then exits — this is expected behavior)
+  #
+  # Responsibilities:
+  #   1. airflow db migrate  — creates/upgrades all Airflow metadata tables
+  #   2. airflow users create — creates the admin UI user
+  #
+  # Why 'service_completed_successfully'?
+  # The webserver and scheduler must wait for this to finish before starting,
+  # otherwise they would try to connect to an uninitialised database.
+  # ---------------------------------------------------------------------------
+  airflow-init:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: pipeone_airflow_init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    environment:
+      # Core Airflow configuration
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      # Admin credentials (read from .env)
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+    command: >
+      bash -c "
+        echo '>>> Migrating Airflow metadata database...' &&
+        airflow db migrate &&
+        echo '>>> Creating admin user...' &&
+        airflow users create
+          --username \"$$AIRFLOW_ADMIN_USER\"
+          --firstname Admin
+          --lastname User
+          --role Admin
+          --email admin@pipeone.local
+          --password \"$$AIRFLOW_ADMIN_PASSWORD\" || echo 'User already exists, skipping.' &&
+        echo '>>> Airflow init complete.'
+      "
+    networks:
+      - pipeone_net
+
+  # ---------------------------------------------------------------------------
+  # NEW: Airflow Webserver — serves the Airflow UI at http://localhost:8080
+  #
+  # Volume mounts explained:
+  #   dags/        — DAG files Airflow will discover and schedule
+  #   logs/        — Per-task execution logs (separate from project logs/)
+  #   plugins/     — Custom operators/hooks (empty for now, reserved)
+  #   src/         — Project ingestion module (imported by the PythonOperator)
+  #   dbt_project/ — dbt models (used by dbt build/test BashOperators)
+  #   dbt_profiles — profiles.yml for dbt Docker connection (mounted as ~/.dbt)
+  #
+  # POSTGRES_HOST override:
+  #   Inside Docker, services communicate by service name.
+  #   We override POSTGRES_HOST to 'warehouse' so the ingestion script
+  #   connects to the correct container instead of 'localhost'.
+  # ---------------------------------------------------------------------------
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: pipeone_airflow_webserver
+    restart: always
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      # Airflow core config
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      # Python path — allows 'from src.ingestion.github_client import ...'
+      PYTHONPATH: /opt/airflow/project
+      # Project credentials forwarded from .env
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      POSTGRES_HOST: warehouse         # Docker service name (not localhost)
+      POSTGRES_PORT: 5432              # Internal container port (always 5432)
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/project/src
+      - ./dbt_project:/opt/airflow/project/dbt_project
+      - ./airflow/dbt_profiles:/home/airflow/.dbt
+    command: webserver
+    networks:
+      - pipeone_net
+
+  # ---------------------------------------------------------------------------
+  # NEW: Airflow Scheduler — continuously monitors DAGs and triggers tasks
+  #
+  # Uses identical environment and volume mounts as the webserver so both
+  # services share the same code, credentials, and mounted project files.
+  # The scheduler is the component that actually *executes* tasks with
+  # LocalExecutor (runs tasks as subprocesses on this same container).
+  # ---------------------------------------------------------------------------
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: pipeone_airflow_scheduler
+    restart: always
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      # Airflow core config (must match webserver exactly)
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      # Python path — allows imports from the mounted src/ directory
+      PYTHONPATH: /opt/airflow/project
+      # Project credentials forwarded from .env
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      POSTGRES_HOST: warehouse         # Docker service name (not localhost)
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/project/src
+      - ./dbt_project:/opt/airflow/project/dbt_project
+      - ./airflow/dbt_profiles:/home/airflow/.dbt
+    command: scheduler
+    networks:
+      - pipeone_net
+
+# =============================================================================
+# Networks
+# =============================================================================
+# A single named network allows all containers to resolve each other by
+# service name (e.g. Airflow containers reach Postgres via 'warehouse').
+networks:
+  pipeone_net:
+    name: pipeone_network
+
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
+  # EXISTING: persistent storage for the data warehouse
   postgres_data:
     name: pipeone_postgres_volume
+
+  # NEW: persistent storage for Airflow metadata DB
+  airflow_postgres_data:
+    name: pipeone_airflow_postgres_volume

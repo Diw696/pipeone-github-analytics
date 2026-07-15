@@ -1,0 +1,80 @@
+# =============================================================================
+# dbt profiles.yml — Docker / Airflow Environment
+# =============================================================================
+#
+# Location inside container: /home/airflow/.dbt/profiles.yml
+# Mounted via docker-compose.yml:
+#   ./airflow/dbt_profiles:/home/airflow/.dbt
+#
+# ----------------------------------------------------------------------------
+# RELATIONSHIP TO THE EXISTING PROFILE
+# ----------------------------------------------------------------------------
+# This file is a Docker-adapted version of:
+#   dbt_project/profiles.yml.example
+#
+# What is IDENTICAL to the original:
+#   - Profile name:  pipeone_profile  (must match dbt_project.yml exactly)
+#   - Target names:  dev, prod
+#   - Schema names:  dbt_dev, dbt_prod
+#   - Port:          5432
+#   - dbname:        pipeone_warehouse
+#   - threads:       4
+#   - All other connection settings (keepalives_idle, connect_timeout, etc.)
+#
+# What is DIFFERENT (and why):
+#   - host: warehouse
+#       Inside Docker, containers resolve each other by service name.
+#       'localhost' inside a container refers to that container itself,
+#       not the host machine. 'warehouse' is the Docker Compose service name
+#       for the PostgreSQL data warehouse.
+#
+#   - user/password/dbname: use dbt env_var() instead of hardcoded values
+#       This avoids duplicating credentials that are already in .env.
+#       dbt reads these at runtime from environment variables injected
+#       by docker-compose.yml into the Airflow containers.
+#       No secrets are stored in this file.
+#
+# NOTE on profile name mismatch in the original example:
+#   profiles.yml.example uses 'pipeone:' as the top-level key, but
+#   dbt_project.yml declares profile: 'pipeone_profile'. This file
+#   uses 'pipeone_profile' to match dbt_project.yml — which is what
+#   dbt actually resolves at runtime.
+# =============================================================================
+
+pipeone_profile:
+  target: dev
+  outputs:
+
+    # -------------------------------------------------------------------------
+    # dev target — writes to schema: dbt_dev
+    # Default target. Used when running: dbt build (no --target flag)
+    # -------------------------------------------------------------------------
+    dev:
+      type: postgres
+      host: warehouse                            # Docker service name (changed from localhost)
+      user: "{{ env_var('POSTGRES_USER') }}"    # Reads from container environment
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      port: 5432
+      dbname: "{{ env_var('POSTGRES_DB') }}"
+      schema: dbt_dev                            # Unchanged
+      threads: 4                                 # Unchanged
+      keepalives_idle: 0                         # Unchanged
+      connect_timeout: 10                        # Unchanged
+      search_path: public                        # Unchanged
+
+    # -------------------------------------------------------------------------
+    # prod target — writes to schema: dbt_prod
+    # Used when running: dbt build --target prod
+    # -------------------------------------------------------------------------
+    prod:
+      type: postgres
+      host: warehouse                            # Docker service name (changed from localhost)
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      port: 5432
+      dbname: "{{ env_var('POSTGRES_DB') }}"
+      schema: dbt_prod                           # Unchanged
+      threads: 4                                 # Unchanged
+      keepalives_idle: 0                         # Unchanged
+      connect_timeout: 10                        # Unchanged
+      search_path: public                        # Unchanged

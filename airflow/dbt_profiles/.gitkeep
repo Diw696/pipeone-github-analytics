@@ -1,0 +1,5 @@
+# This directory will hold the dbt profiles.yml used by Airflow containers.
+# It is mounted into the container at /home/airflow/.dbt/
+# so dbt can discover its connection configuration at runtime.
+#
+# Component 2 will create profiles.yml here.

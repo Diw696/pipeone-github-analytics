@@ -1,0 +1,3 @@
+# This directory holds Airflow DAG files.
+# Files placed here are automatically discovered by the Airflow scheduler.
+# Each .py file that contains a DAG object will appear in the Airflow UI.

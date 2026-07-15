@@ -61,3 +61,23 @@ logs/
 # Database
 *.db
 *.sqlite3
+
+# =============================================================================
+# Airflow — Added for H3: Airflow Orchestration
+# =============================================================================
+
+# Task execution logs — generated at runtime, can be large, never commit these
+airflow/logs/*
+# Keep the directory itself tracked so Docker can bind-mount it
+!airflow/logs/.gitkeep
+
+# Docker image build cache (created by BuildKit on some systems)
+.docker/
+
+# Python cache inside the airflow/ directory
+airflow/**/__pycache__/
+airflow/**/*.py[cod]
+
+# NOTE: airflow/dbt_profiles/profiles.yml is intentionally NOT gitignored.
+# It uses dbt env_var() for all credentials — no secrets are stored in the file.
+# It is safe and useful to commit so the team can share the Docker dbt config.
