@@ -5,3 +5,8 @@ psycopg2-binary==2.9.9
 
 # dbt Dependencies - Week 2
 dbt-postgres==1.7.4
+
+# Dashboard Dependencies - Week 3
+streamlit==1.36.0
+plotly==5.22.0
+pandas==2.2.2
