@@ -1,4 +1,4 @@
-Markdown# PipeOne
+# PipeOne
 
 **A data engineering platform demonstrating end-to-end GitHub analytics using ELT patterns, dimensional modeling, and the Medallion Architecture.**
 
@@ -33,38 +33,10 @@ PipeOne is an enterprise-grade data platform that ingests live GitHub events fro
 
 ## Architecture
 
-     GitHub Events API
-             │
-             ▼
-      Python Ingestion
-             │
-             ▼
-   PostgreSQL Warehouse
- [github_events_raw (JSONB)]
-             │
-             ▼
-        dbt Bronze
-   [stg_github_events]
-             │
-             ▼
-        dbt Silver
-int_push_events      int_pull_requests
-│                       │
-└───────────┬───────────┘
-│
-▼
-dbt Gold
-┌───────────┼───────────┬──────────────────────┐
-▼           ▼           ▼                      ▼
-dim_repository dim_contributor fct_github_daily fct_contributor_daily
-│           │           │                      │
-└───────────┼───────────┴──────────────────────┘
-│
-▼
-Automated Data Quality Suite
-│
-▼
+<img width="5263" height="2312" alt="Github_Pipeline - Page 1 GitHub Events Data Pipeline" src="https://github.com/user-attachments/assets/b0106c2d-e5ed-4266-9b20-a2d6048d4549" />
+
 ---
+
 
 ## Medallion Architecture Specification
 
@@ -90,43 +62,9 @@ Automated Data Quality Suite
 ---
 
 ## Project Structure
+<img width="5705" height="3214" alt="Github_Pipeline - Page 1 GitHub Analytics Project Structure" src="https://github.com/user-attachments/assets/e0696c97-109f-4c06-aa8c-9a35760e4fac" />
 
-pipeone-github-analytics/
-│
-├── src/
-│   ├── ingestion/
-│   │   ├── github_client.py            # API ingestion engine
-│   │   └── init.py
-│   └── database/
-│       ├── init_db.py                  # Raw database schema initialization
-│       └── init.py
-│
-├── dbt_project/                        # Core transformation layer
-│   ├── dbt_project.yml                 # dbt project configurations
-│   ├── profiles.yml.example            # Connection infrastructure template
-│   ├── setup_dbt_profile.ps1           # Deployment script automation
-│   ├── models/
-│   │   ├── staging/
-│   │   │   ├── _sources.yml            # Source definitions and data fresh checks
-│   │   │   └── stg_github_events.sql   # Bronze layer passthrough view[cite: 1]
-│   │   ├── silver/
-│   │   │   ├── _schema.yml             # Intermediate column validation suite
-│   │   │   ├── int_push_events.sql     # Flattened PushEvent view logic
-│   │   │   └── int_pull_requests.sql   # Flattened PullRequestEvent view logic
-│   │   └── gold/
-│   │       ├── _schema.yml             # Star Schema referential integrity tests
-│   │       ├── dim_repository.sql      # Repository context table
-│   │       ├── dim_contributor.sql     # Unified developer profile dimension
-│   │       ├── fct_github_daily_activity.sql     # Repository daily analytics mart[cite: 2]
-│   │       ├── fct_contributor_daily_activity.sql # Individual user contribution metrics[cite: 1]
-│   └── tests/
-│       ├── no_future_timestamps.sql    # Custom business rule assertion
-│       ├── push_model_integrity.sql    # Payload schema consistency validation
-│       └── no_negative_commit_count.sql # Mathematical boundary validation
-│
-├── docker-compose.yml                  # Localized warehouse containerization
-├── requirements.txt                    # Python application environment blocks
-└── README.md  
+
 ---
 
 ## Tech Stack
