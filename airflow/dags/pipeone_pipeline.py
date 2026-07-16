@@ -61,23 +61,35 @@ DBT_TARGET = "dev"  # Switch to "prod" to write to the dbt_prod schema
 # at the individual task level. Defined here (not inline) for readability.
 # =============================================================================
 default_args = {
-    # Displayed in the Airflow UI — identifies who owns this pipeline
-    "owner": "pipeone",
+    # Displayed in the Airflow UI — identifies who owns this pipeline.
+    # Use a team handle or email address in shared Airflow environments.
+    "owner": "data-engineering",
 
     # False: each DAG run is independent and does not wait for the
     # previous run to succeed. This is safe because ingestion is idempotent
     # (ON CONFLICT DO NOTHING) and dbt models are rebuilt from scratch each run.
     "depends_on_past": False,
 
-    # Retry once on failure before marking the task as permanently failed.
+    # Retry up to 3 times before marking the task as permanently failed.
     # Handles transient errors: GitHub API timeouts, network blips,
     # or a brief PostgreSQL unavailability.
-    "retries": 1,
+    "retries": 3,
 
-    # Wait 5 minutes between the failure and the retry attempt.
-    # GitHub's API rate limit resets every hour — 5 minutes is a reasonable
-    # buffer for transient quota exhaustion without over-delaying the pipeline.
-    "retry_delay": timedelta(minutes=5),
+    # Base delay before the first retry attempt.
+    # With exponential backoff enabled (below), subsequent delays double:
+    #   Attempt 1 → 2 min, Attempt 2 → 4 min, Attempt 3 → 8 min.
+    # This covers GitHub's per-minute rate limit resets and short DB blips
+    # without holding up the worker for excessively long periods.
+    "retry_delay": timedelta(minutes=2),
+
+    # Doubles the retry_delay after each failed attempt.
+    # Prevents rapid-fire retries that would exhaust the GitHub API quota again
+    # immediately, giving the upstream service time to recover.
+    "retry_exponential_backoff": True,
+
+    # Hard ceiling on the retry delay — prevents the backoff from growing
+    # unbounded if retries is ever increased without revisiting the delays.
+    "max_retry_delay": timedelta(minutes=30),
 
     # No email alerts (email backend not configured in this environment).
     # In production, set these to True and configure SMTP in Airflow settings.
@@ -152,13 +164,18 @@ with DAG(
     #   - Airflow REST API
     schedule=None,
 
-    # Required by Airflow but irrelevant when schedule=None.
+    # Anchored to the project's first deployment month.
     # Fixed past date prevents accidental backfilling if schedule is later enabled.
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2026, 7, 1),
 
     # Prevents Airflow from generating historical runs for all past intervals
     # between start_date and today when the DAG is first enabled.
     catchup=False,
+
+    # Ensures only one pipeline run is active at any time.
+    # Prevents concurrent runs from producing write conflicts in PostgreSQL
+    # or running competing dbt builds against the same target schema.
+    max_active_runs=1,
 
     # Used for filtering in the Airflow UI DAG list
     tags=["pipeone", "github", "dbt", "elt"],
@@ -211,6 +228,12 @@ with DAG(
     extract_github_events = PythonOperator(
         task_id="extract_github_events",
         python_callable=run_github_ingestion,
+        # Hard ceiling on task runtime. The GitHub API fetch + DB write for 3 repos
+        # should complete in under 5 minutes under normal conditions.
+        # 15 minutes gives generous headroom for slow network or DB start-up lag.
+        # If breached, Airflow raises AirflowTaskTimeout and marks the task FAILED,
+        # freeing the worker slot immediately rather than hanging indefinitely.
+        execution_timeout=timedelta(minutes=15),
         doc_md="""
         ## Task: extract_github_events
 
@@ -224,7 +247,9 @@ with DAG(
         **Idempotency**: Safe to re-run — duplicate events are silently skipped
         via `ON CONFLICT (event_id) DO NOTHING`.
 
-        **Retry**: 1 retry with 5-minute delay (GitHub rate limit buffer).
+        **Retry**: 3 retries with exponential backoff (2 min → 4 min → 8 min).
+
+        **Timeout**: 15 minutes — task is killed and marked FAILED if exceeded.
         """,
     )
 
@@ -258,6 +283,11 @@ with DAG(
             f"--profiles-dir {DBT_PROFILES_DIR} "
             f"--target {DBT_TARGET}"
         ),
+        # dbt build compiles and materialises all 7 models sequentially.
+        # 30 minutes is a generous ceiling for this data volume; typical runs
+        # complete in under 3 minutes. Prevents zombie dbt processes from
+        # occupying a worker slot if PostgreSQL becomes unresponsive mid-run.
+        execution_timeout=timedelta(minutes=30),
         doc_md=f"""
         ## Task: dbt_build
 
@@ -276,6 +306,8 @@ with DAG(
         **Profile**: `pipeone_profile` → target `{DBT_TARGET}` → schema `dbt_{DBT_TARGET}`
 
         **Failure**: Stops the pipeline — `dbt_test` will not run.
+
+        **Timeout**: 30 minutes — task is killed and marked FAILED if exceeded.
         """,
     )
 
@@ -308,6 +340,10 @@ with DAG(
             f"--profiles-dir {DBT_PROFILES_DIR} "
             f"--target {DBT_TARGET}"
         ),
+        # dbt test runs SQL assertions against already-materialised tables.
+        # 20 minutes is a conservative ceiling; typical runs complete in seconds.
+        # Prevents a stalled DB connection from keeping the worker slot locked.
+        execution_timeout=timedelta(minutes=20),
         doc_md=f"""
         ## Task: dbt_test
 
@@ -324,6 +360,8 @@ with DAG(
 
         **Hard fail**: Any failing test exits with code 1 → task FAILED → DAG FAILED.
         Broken data is never silently accepted downstream.
+
+        **Timeout**: 20 minutes — task is killed and marked FAILED if exceeded.
 
         **Extending**: Add `on_failure_callback=send_alert` to this task to
         trigger notifications when data quality degrades.
