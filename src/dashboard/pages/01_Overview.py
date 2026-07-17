@@ -38,7 +38,7 @@ st.divider()
 # Filters (sidebar)
 # ---------------------------------------------------------------------------
 start_date, end_date = sidebar.render_date_range_filter(
-    label="Activity Period",
+    label="Date Range",
     default_days=30,
 )
 
@@ -75,10 +75,8 @@ kpi.render_kpi_row(display_kpis)
 
 if not commits_in_data:
     st.info(
-        "ℹ️ **Commit count is not available for these repositories.** "
-        "The GitHub Events API truncates commit payloads for large, high-volume "
-        "repositories. Push event counts are shown instead — each push event "
-        "represents one or more commits being pushed to the repository."
+        "Commit counts are unavailable because the GitHub Events API truncates commit "
+        "payloads for large repositories. Push event counts are displayed instead."
     )
 
 st.divider()
@@ -87,7 +85,7 @@ st.divider()
 # Charts — Row 1: Daily activity trend
 # ---------------------------------------------------------------------------
 st.subheader("Daily Activity Trend")
-st.caption(f"Showing: {start_date} → {end_date} | All repositories combined")
+st.caption(f"Selected Period: {start_date} → {end_date} • All Repositories")
 
 with st.spinner("Loading daily activity..."):
     daily_df = overview_svc.get_daily_activity_all_repos(start_date, end_date)
@@ -95,9 +93,15 @@ with st.spinner("Loading daily activity..."):
 if daily_df.empty:
     st.info("No activity data found for the selected date range.")
 else:
-    # Use commit_count if it has data; fall back to push_count with a note.
+    # Rename technical columns for business-friendly chart labels
+    daily_df = daily_df.rename(columns={
+        "push_count": "Push Events",
+        "pr_event_count": "PR Events",
+    })
+
+    # Use commit_count if it has data; fall back to Push Events with a note.
     use_commits     = daily_df["commit_count"].sum() > 0
-    activity_col    = "commit_count" if use_commits else "push_count"
+    activity_col    = "commit_count" if use_commits else "Push Events"
     activity_title  = (
         "Daily Commit Volume (All Repos)"
         if use_commits
@@ -116,7 +120,7 @@ else:
         charts.render_area_chart(
             df=daily_df,
             x="activity_date",
-            y="pr_event_count",
+            y="PR Events",
             title="Daily PR Events (All Repos)",
         )
 
@@ -133,11 +137,16 @@ with col3:
     with st.spinner("Loading repo comparison..."):
         repo_comparison_df = overview_svc.get_repo_comparison()
     if not repo_comparison_df.empty:
+        # Rename technical columns for business-friendly chart labels
+        repo_comparison_df = repo_comparison_df.rename(columns={
+            "total_pushes": "Push Events",
+            "total_pr_events": "PR Events",
+        })
         # Show pushes vs PR events (always available); commits only if non-zero
         compare_cols = (
-            ["total_commits", "total_pr_events"]
+            ["total_commits", "PR Events"]
             if repo_comparison_df["total_commits"].sum() > 0
-            else ["total_pushes", "total_pr_events"]
+            else ["Push Events", "PR Events"]
         )
         compare_title = (
             "Commits vs PR Events by Repository"
@@ -156,10 +165,15 @@ with col4:
     with st.spinner("Loading event distribution..."):
         dist_df = overview_svc.get_event_distribution(start_date, end_date)
     if not dist_df.empty:
+        # Rename technical columns for business-friendly chart labels
+        dist_df = dist_df.rename(columns={
+            "push_count": "Push Events",
+            "pr_event_count": "PR Events",
+        })
         charts.render_bar_chart(
             df=dist_df,
             x="activity_date",
-            y=["push_count", "pr_event_count"],
+            y=["Push Events", "PR Events"],
             title="Daily Event Distribution (Pushes vs PRs)",
             barmode="stack",
         )
@@ -170,7 +184,7 @@ st.divider()
 # Detailed Table
 # ---------------------------------------------------------------------------
 st.subheader("Repository Summary Table")
-st.caption("All-time cumulative metrics per repository from dim_repository.")
+st.caption("All-time cumulative metrics for each tracked repository.")
 
 with st.spinner("Loading repository summary..."):
     repo_table_df = overview_svc.get_repo_comparison()
@@ -203,8 +217,8 @@ with st.spinner("Checking pipeline status..."):
 now = datetime.now(timezone.utc)
 
 last_ingested      = lifecycle["last_ingested"]        # Stage 1 — fetched_at
-data_coverage_date = lifecycle["data_coverage_date"]   # Stage 2 — activity_date
-gold_built_at      = lifecycle["gold_built_at"]        # Stage 3 — created_at
+data_coverage_date = lifecycle["data_coverage_date"]   # Stage 2 — Latest Available Data
+gold_built_at      = lifecycle["gold_built_at"]        # Stage 3 — Gold Layer Refreshed
 
 # Freshness badge is based on Stage 1 (raw ingestion), not Gold created_at.
 # This correctly turns GREEN after an Airflow run regardless of the dbt schema.
@@ -224,12 +238,12 @@ with col_a:
     st.metric(label="Ingestion Timestamp", value=val)
 
 with col_b:
-    st.markdown("#### 📅 Stage 2 — Data Covers Through")
+    st.markdown("#### 📅 Stage 2 — Latest Available Data")
     st.caption("Most recent event date present in the Gold Layer")
     st.metric(label="Latest Activity Date", value=data_coverage_date)
 
 with col_c:
-    st.markdown("#### ⚙️ Stage 3 — Gold Layer Built")
+    st.markdown("#### ⚙️ Stage 3 — Gold Layer Refreshed")
     st.caption("When dbt last materialised the Gold tables (`created_at`)")
     val = gold_built_at.strftime("%Y-%m-%d %H:%M UTC") if gold_built_at else "—"
     st.metric(label="dbt Build Timestamp", value=val)

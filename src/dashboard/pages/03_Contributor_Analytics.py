@@ -5,10 +5,6 @@ Business question: "Who is contributing the most?"
 
 Layout:
   Title → Description → Filters → KPI Cards → Charts → Table
-
-Split into two sections on one page:
-  TOP:    Platform-level leaderboard and rankings
-  BOTTOM: Individual contributor profile and timeline
 """
 
 import sys
@@ -27,23 +23,18 @@ import components.sidebar as sidebar
 # ---------------------------------------------------------------------------
 st.title("👤 Contributor Analytics")
 st.markdown(
-    "**Business question:** Who is contributing the most?"
-)
-st.markdown(
-    "Explore contributor performance across repositories. The top section shows "
-    "platform-wide rankings and total activity. The bottom section "
-    "provides a detailed profile for any individual contributor. "
-    "All data sourced from `dim_contributor` and `fct_contributor_daily_activity`."
+    "Analyze contributor activity across repositories. "
+    "All metrics are sourced from the Gold Layer."
 )
 st.divider()
 
 # ---------------------------------------------------------------------------
 # Filters (sidebar)
 # ---------------------------------------------------------------------------
-selected_repo    = sidebar.render_repo_filter(include_all=True)
-contrib_type     = sidebar.render_contrib_type_filter()
+selected_repo = sidebar.render_repo_filter(include_all=True)
+contrib_type  = sidebar.render_contrib_type_filter()
 start_date, end_date = sidebar.render_date_range_filter(
-    label="Profile Date Range",
+    label="Date Range",
     default_days=30,
 )
 
@@ -60,7 +51,7 @@ st.caption(
 )
 
 # --- KPI Cards (platform-wide totals) ---
-with st.spinner("Loading contributor counts..."):
+with st.spinner("Loading contributor data..."):
     leaderboard_df = contrib_svc.get_contributor_leaderboard(repo_filter, contrib_type)
 
 total_contributors = len(leaderboard_df)
@@ -68,7 +59,7 @@ if total_contributors > 0:
     top_contributor = leaderboard_df.iloc[0]["username"]
     avg_activity = round(leaderboard_df["total_activity"].mean(), 1)
 else:
-    top_contributor = "None"
+    top_contributor = "—"
     avg_activity = 0.0
 
 kpi.render_kpi_row({
@@ -79,7 +70,7 @@ kpi.render_kpi_row({
 
 st.divider()
 
-# --- Charts: Leaderboard ---
+# --- Top Contributors Chart ---
 st.subheader("Contributor Rankings")
 
 with st.spinner("Loading top contributors..."):
@@ -97,15 +88,30 @@ else:
 
 st.divider()
 
-# --- Detailed Leaderboard Table ---
+# --- Full Leaderboard Table ---
 st.subheader("Full Leaderboard")
-st.caption(
-    "Ranked by total activity. "
-    "`contrib_type` is pre-classified by dbt in `dim_contributor`."
-)
+st.caption("Ranked by total activity across the selected filters.")
 
 if not leaderboard_df.empty:
-    charts.render_dataframe_table(df=leaderboard_df, title="")
+    # Rename columns for business-friendly presentation
+    display_df = leaderboard_df.rename(columns={
+        "rank":               "Rank",
+        "username":           "Contributor",
+        "contrib_type":       "Type",
+        "total_activity":     "Total Activity",
+        "total_push_events":  "Push Events",
+        "total_pr_events":    "PR Events",
+    })
+
+    # Drop columns where every visible value is zero — they add no signal
+    zero_cols = [c for c in ["Push Events", "PR Events"] if display_df[c].sum() == 0]
+    display_df = display_df.drop(columns=zero_cols)
+
+    # Replace "unknown" contributor type with a readable label
+    if "Type" in display_df.columns:
+        display_df["Type"] = display_df["Type"].replace("unknown", "Unclassified")
+
+    charts.render_dataframe_table(df=display_df, title="")
 else:
     st.info("No contributors found for the selected filters.")
 
@@ -124,7 +130,7 @@ if not contributor_list:
     st.warning("No contributors found in the database.")
     st.stop()
 
-# Determine default selected contributor (highest-ranked contributor for currently selected filters)
+# Default to highest-ranked contributor for the active filters
 default_index = 0
 if not leaderboard_df.empty and contributor_list:
     top_contrib = leaderboard_df.iloc[0]["username"]
@@ -140,81 +146,76 @@ selected_contributor = st.selectbox(
 
 st.divider()
 
-# --- Profile KPI Cards ---
+# ---------------------------------------------------------------------------
+# Load all data for the selected contributor up front
+# ---------------------------------------------------------------------------
 with st.spinner(f"Loading profile for {selected_contributor}..."):
-    profile = contrib_svc.get_contributor_profile(selected_contributor)
-
-if profile:
-    kpi.render_kpi_row({
-        "Contributor Type": profile["Contributor Type"],
-        "Total Pushes":     f"{profile['Total Pushes']:,}",
-        "Total PR Events":  f"{profile['Total PR Events']:,}",
-    })
-    st.caption(
-        f"Active: **{profile['First Active']}** → **{profile['Last Active']}**"
-    )
-
-st.divider()
-
-# --- Individual Charts ---
-st.subheader(f"Activity Timeline — {selected_contributor}")
-st.caption(f"Period: {start_date} → {end_date}")
-
-with st.spinner("Loading activity timeline..."):
-    timeline_df = contrib_svc.get_contributor_timeline(
+    profile          = contrib_svc.get_contributor_profile(selected_contributor)
+    participation_df = contrib_svc.get_contributor_repo_participation(selected_contributor)
+    timeline_df      = contrib_svc.get_contributor_timeline(
         selected_contributor, start_date, end_date
     )
 
-if timeline_df.empty:
-    st.info(
-        f"No activity data for **{selected_contributor}** "
-        f"in the selected date range."
-    )
-else:
-    col3, col4 = st.columns(2)
-    with col3:
-        charts.render_area_chart(
-            df=timeline_df,
-            x="activity_date",
-            y="push_count",
-            color="repo_name",
-            title="Daily Push Events by Repository",
-            color_label="Repository",
-        )
-    with col4:
-        charts.render_bar_chart(
-            df=timeline_df,
-            x="activity_date",
-            y="pr_event_count",
-            color="repo_name",
-            title="Daily PR Events by Repository",
-            barmode="stack",
-        )
+if not profile:
+    st.warning(f"No data found for **{selected_contributor}**.")
+    st.stop()
 
-    # PR Merge rate trend (only where non-null — push-only days have null by design)
-    pct_df = timeline_df.dropna(subset=["pr_merged_pct"])
-    if not pct_df.empty:
-        charts.render_line_chart(
-            df=pct_df,
-            x="activity_date",
-            y="pr_merged_pct",
-            color="repo_name",
-            title="PR Merge Rate % Over Time",
-            color_label="Repository",
-        )
+# ---------------------------------------------------------------------------
+# Derived metrics
+# ---------------------------------------------------------------------------
+total_pushes    = profile["Total Pushes"]
+total_pr_events = profile["Total PR Events"]
+repos_count     = len(participation_df) if not participation_df.empty else 1
+active_days     = timeline_df["activity_date"].nunique() if not timeline_df.empty else 0
+total_pr_merged = int(participation_df["pr_merged"].sum()) if not participation_df.empty else 0
+first_active    = profile["First Active"]
+last_active     = profile["Last Active"]
+
+# ---------------------------------------------------------------------------
+# Contributor Summary — two-row compact metric grid
+# ---------------------------------------------------------------------------
+st.markdown(f"#### {selected_contributor}")
+
+# Row 1 — activity totals
+r1c1, r1c2, r1c3 = st.columns(3)
+r1c1.metric("Push Events",  f"{total_pushes:,}")
+r1c2.metric("PR Events",    f"{total_pr_events:,}")
+r1c3.metric("Merged PRs",   f"{total_pr_merged:,}")
+
+# Row 2 — engagement context
+r2c1, r2c2, r2c3 = st.columns(3)
+r2c1.metric("Repositories", repos_count)
+r2c2.metric("Active Days",  active_days)
+r2c3.metric("First → Latest Activity", f"{first_active} → {last_active}")
 
 st.divider()
 
-# --- Repository Participation Table ---
-st.subheader("Repository Participation")
-st.caption(
-    f"All-time contribution breakdown for **{selected_contributor}** by repository."
-)
-
-with st.spinner("Loading repository participation..."):
-    participation_df = contrib_svc.get_contributor_repo_participation(selected_contributor)
-
+# ---------------------------------------------------------------------------
+# Repository Breakdown — compact summary (no chart)
+# ---------------------------------------------------------------------------
 if not participation_df.empty:
-    charts.render_dataframe_table(df=participation_df, title="")
-else:
-    st.info("No repository participation data available.")
+    st.subheader("Repository Breakdown")
+    st.caption(f"All-time contribution split for **{selected_contributor}**.")
+
+    if len(participation_df) == 1:
+        # Single repo — plain text summary, no chart needed
+        row = participation_df.iloc[0]
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Repository",   row["repo_name"])
+        col_b.metric("Push Events",  int(row["total_pushes"]))
+        col_c.metric("PR Events",    int(row["total_pr_events"]))
+    else:
+        # Multiple repos — compact summary table
+        repo_display = participation_df.rename(columns={
+            "repo_name":       "Repository",
+            "total_pushes":    "Push Events",
+            "total_pr_events": "PR Events",
+            "pr_merged":       "Merged PRs",
+        })[["Repository", "Push Events", "PR Events", "Merged PRs"]].copy()
+
+        # Drop columns where every value is zero — they add no signal
+        zero_cols = [c for c in ["PR Events", "Merged PRs"] if repo_display[c].sum() == 0]
+        repo_display = repo_display.drop(columns=zero_cols)
+
+        charts.render_dataframe_table(df=repo_display, title="")
+

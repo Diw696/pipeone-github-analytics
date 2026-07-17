@@ -23,12 +23,8 @@ import components.sidebar as sidebar
 # ---------------------------------------------------------------------------
 st.title("📂 Repository Analytics")
 st.markdown(
-    "**Business question:** Which repository is performing best?"
-)
-st.markdown(
-    "Deep dive into individual repository performance. Select a repository "
-    "and date range to explore commit trends, PR activity, and push behaviour. "
-    "All metrics come from `dim_repository` and `fct_github_daily_activity`."
+    "Analyze push and pull request activity for a selected repository. "
+    "All metrics are sourced from the Gold Layer."
 )
 st.divider()
 
@@ -37,14 +33,14 @@ st.divider()
 # ---------------------------------------------------------------------------
 selected_repo = sidebar.render_repo_filter(include_all=False)
 start_date, end_date = sidebar.render_date_range_filter(
-    label="Activity Period",
+    label="Date Range",
     default_days=30,
 )
 
 # ---------------------------------------------------------------------------
 # KPI Cards
 # ---------------------------------------------------------------------------
-st.subheader(f"Repository KPIs — {selected_repo}")
+st.subheader(f"Repository Overview — {selected_repo}")
 
 with st.spinner("Loading repository KPIs..."):
     repo_kpis = repo_svc.get_repo_kpis(selected_repo)
@@ -68,14 +64,13 @@ if repo_kpis:
 
     st.caption(
         f"Owner: **{repo_kpis['Owner']}** | "
-        f"Active: {repo_kpis['First Active']} → {repo_kpis['Last Active']}"
+        f"Data Coverage: {repo_kpis['First Active']} → {repo_kpis['Last Active']}"
     )
 
     if not commits_available:
         st.info(
-            "ℹ️ **Commit count is not available for this repository.** "
-            "The GitHub Events API truncates commit payloads for large, high-volume "
-            "repositories. Push event counts are shown instead."
+            "Commit counts are unavailable because the GitHub Events API truncates "
+            "commit payloads. Push events are shown instead."
         )
 else:
     st.warning(f"No data found for repository: {selected_repo}")
@@ -109,7 +104,7 @@ else:
             df=daily_df,
             x="activity_date",
             y="total_activity_count",
-            title="Daily Total Activity Volume",
+            title="Daily Repository Activity",
         )
 
     st.divider()
@@ -117,7 +112,7 @@ else:
     # Row 2: PR activity
     st.subheader("Pull Request Activity")
     st.caption(
-        "PR merge rate (`pr_merged_pct`) is pre-computed in the Gold Layer by dbt. "
+        "PR merge rate is pre-computed in the Gold Layer. is pre-computed in the Gold Layer by dbt. "
         "It is not recalculated here."
     )
 
@@ -128,7 +123,7 @@ else:
             x="activity_date",
             y1="pr_opened",
             y2="pr_merged",
-            title="PRs Opened vs Merged per Day",
+            title="Daily PR Activity",
             y1_label="PRs Opened",
             y2_label="PRs Merged",
         )
@@ -142,7 +137,7 @@ else:
                 df=pct_df,
                 x="activity_date",
                 y="pr_merged_pct",
-                title="PR Merge Rate % (pr_merged_pct)",
+                title="Daily PR Merge Rate",
                 y_label="Merge Rate (%)",
             )
 
@@ -151,10 +146,9 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Detailed Table
 # ---------------------------------------------------------------------------
-st.subheader("All-Repository Comparison (Selected Period)")
+st.subheader("Repository Comparison")
 st.caption(
-    "Aggregated metrics for all repositories over the selected date range. "
-    "Use this to benchmark the selected repository against peers."
+    "Compare the selected repository with the other tracked repositories over the selected period."
 )
 
 with st.spinner("Loading comparison table..."):

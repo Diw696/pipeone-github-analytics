@@ -86,11 +86,11 @@ st.divider()
 
 # Two-row KPI strip: freshness first, then platform counts
 kpi.render_kpi_row({
-    "Gold Layer Refreshed":  (
+    "Last Gold Refresh":  (
         gold_refresh_time.strftime("%Y-%m-%d %H:%M UTC")
         if gold_refresh_time else "Unknown"
     ),
-    "Data Current As Of":    data_coverage,
+    "Latest Activity Date":    data_coverage,
     "Hours Since Last Ingestion":  ingestion_age_hours if ingestion_age_hours is not None else "Unknown",
 })
 
@@ -106,7 +106,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
-st.subheader("Gold Table Row Counts")
+st.subheader("Gold Layer Metrics")
 st.caption(
     "Row counts confirm that each Gold table has been populated. "
     "An empty or unexpectedly low count indicates a pipeline run may have failed."
@@ -146,7 +146,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Detailed Table — Gold table status
 # ---------------------------------------------------------------------------
-st.subheader("Gold Layer Table Status")
+st.subheader("Gold Tables")
 st.caption(
     "Detailed view of each Gold table: row count and dbt run timestamp. "
     "**Gold Layer Refresh Time** is when dbt materialised the table."
@@ -155,12 +155,12 @@ st.caption(
 if not stats_df.empty:
     display_df = stats_df[["table_name", "row_count", "last_updated"]].copy()
     display_df["last_updated"] = display_df["last_updated"].dt.strftime("%Y-%m-%d %H:%M UTC")
-    display_df.columns = ["Table", "Row Count", "Gold Layer Refreshed (UTC)"]
+    display_df.columns = ["Table", "Row Count", "Last Gold Refresh (UTC)"]
     charts.render_dataframe_table(df=display_df, title="")
 
 st.divider()
 
-st.subheader("Repository Date Coverage")
+st.subheader("Repository Coverage")
 st.caption(
     "**Data Coverage Date** is the most recent `last_active_date` across all repos — "
     "this is the latest date for which GitHub events exist in the warehouse. "
