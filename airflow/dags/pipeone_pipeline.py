@@ -1,40 +1,43 @@
 """
-pipeone_pipeline.py — PipeOne GitHub Analytics ELT Pipeline
-============================================================
+pipeone_pipeline.py — PipeOne Developer Intelligence Platform ELT Pipeline
+===========================================================================
 
-Orchestrates the complete ELT pipeline for the PipeOne GitHub Analytics
-project. Three tasks run in strict linear order; no task is allowed to
+Orchestrates the complete ELT pipeline for the PipeOne Developer Intelligence
+Platform. Four tasks run in strict linear order; no task is allowed to
 start until its predecessor succeeds.
 
 Pipeline Architecture
 ---------------------
 
-    ┌─────────────────────────────┐
-    │   GitHub REST API           │  (facebook/react, microsoft/vscode,
-    │   Events endpoint           │   vercel/next.js — up to 90 events)
-    └────────────┬────────────────┘
-                 │
-                 ▼
-    ┌─────────────────────────────┐
-    │  extract_github_events      │  PythonOperator
-    │  src/ingestion/github_client│  Writes raw JSON → public.github_events_raw
-    └────────────┬────────────────┘
-                 │
-                 ▼
-    ┌─────────────────────────────┐
-    │  dbt_build                  │  BashOperator  (`dbt build`)
-    │  Bronze → Silver → Gold     │  7 models, dependency-ordered
-    └────────────┬────────────────┘
-                 │
-                 ▼
-    ┌─────────────────────────────┐
-    │  dbt_test                   │  BashOperator  (`dbt test`)
-    │  Hard data quality gate     │  Fails the DAG if any assertion breaks
-    └─────────────────────────────┘
+    ┌─────────────────────────────┐     ┌─────────────────────────────┐
+    │   GitHub REST API           │     │   Hacker News Firebase API  │
+    │   Events endpoint           │     │   Top Stories endpoint      │
+    └────────────┬────────────────┘     └────────────┬────────────────┘
+                 │                                   │
+                 ▼                                   ▼
+    ┌─────────────────────────────┐     ┌─────────────────────────────┐
+    │  extract_github_events      │     │  extract_hn_stories         │
+    │  PythonOperator             │ ─▶  │  PythonOperator             │
+    │  → github_events_raw        │     │  → hn_stories_raw           │
+    └────────────┬────────────────┘     └────────────┬────────────────┘
+                 │                                   │
+                 └─────────────────┬───────────────────┘
+                                 ▼
+                    ┌─────────────────────────────┐
+                    │  dbt_build                  │  BashOperator
+                    │  Bronze → Silver → Gold     │  13 models
+                    └────────────┬────────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────────┐
+                    │  dbt_test                   │  BashOperator
+                    │  Hard data quality gate     │  Fails on any assertion
+                    └─────────────────────────────┘
 
 Failure Propagation
 -------------------
-    extract_github_events FAILED  →  dbt_build SKIPPED  →  dbt_test SKIPPED
+    extract_github_events FAILED  →  extract_hn_stories SKIPPED → ...
+    extract_hn_stories FAILED     →  dbt_build SKIPPED  →  dbt_test SKIPPED
     dbt_build FAILED              →  dbt_test SKIPPED
     dbt_test FAILED               →  DAG run marked FAILED
 
@@ -47,6 +50,7 @@ Environment Variables (injected by docker-compose.yml)
     POSTGRES_USER     — Database user
     POSTGRES_PASSWORD — Database password
     DBT_TARGET        — dbt target name; controls which schema dbt writes to
+    HN_*              — Hacker News API configuration (see .env.example)
 
 Schedule
 --------
@@ -67,7 +71,7 @@ Extending the Pipeline
 Maintainers
 -----------
     Team:      data-engineering
-    Project:   PipeOne — GitHub Analytics
+    Project:   PipeOne — Developer Intelligence Platform
     Airflow:   2.9.x
     dbt Core:  1.x
 """
@@ -223,6 +227,51 @@ def run_github_ingestion() -> None:
 
 
 # =============================================================================
+# HN INGESTION CALLABLE
+#
+# Mirrors the pattern established by run_github_ingestion() above.
+# Defined at module scope for the same reasons: unit-testable without
+# instantiating a DAG, and no side effects during scheduler import.
+# =============================================================================
+# fmt: off
+def run_hn_ingestion() -> None:
+    """
+    Thin wrapper that invokes the PipeOne Hacker News ingestion entry-point.
+
+    Why deferred import?
+    --------------------
+    Same reason as ``run_github_ingestion``: the ``src/`` project volume
+    may not be mounted when the Airflow scheduler first parses this file.
+    The deferred import ensures the module is only loaded when a worker
+    actually executes this task.
+
+    Why catch SystemExit?
+    ---------------------
+    ``hn_client.main()`` calls ``sys.exit(1)`` on fatal errors. This wrapper
+    converts it to a descriptive ``RuntimeError`` for Airflow's task logs.
+
+    Raises
+    ------
+    RuntimeError
+        If the HN ingestion script terminates with a non-zero exit code.
+    """
+    try:
+        from src.ingestion.hn_client import main as hn_ingestion_main
+
+        hn_ingestion_main()
+
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            raise RuntimeError(
+                f"Hacker News ingestion script exited with code {exc.code}. "
+                "Common causes: PostgreSQL connection refused, "
+                "POSTGRES_PASSWORD not set, or HN API temporarily unavailable. "
+                "Check the task logs above for the full traceback."
+            ) from exc
+# fmt: on
+
+
+# =============================================================================
 # DAG DEFINITION
 # =============================================================================
 with DAG(
@@ -234,8 +283,8 @@ with DAG(
     # One-line summary displayed in the Airflow UI DAG list view.
     # Keep it short enough to scan at a glance; full details live in doc_md.
     description=(
-        "ELT pipeline: GitHub REST API → raw PostgreSQL ingestion → "
-        "dbt Bronze / Silver / Gold transformation → data quality gate."
+        "Multi-source ELT pipeline: GitHub REST API + Hacker News API → "
+        "raw PostgreSQL ingestion → dbt Bronze / Silver / Gold → data quality gate."
     ),
 
     default_args=default_args,
@@ -265,7 +314,7 @@ with DAG(
     max_active_runs=1,
 
     # Labels used by the Airflow UI filter bar and the REST API.
-    tags=["pipeone", "github", "dbt", "elt"],
+    tags=["pipeone", "github", "hackernews", "dbt", "elt"],
 
     # Full documentation rendered in the Airflow UI → DAG detail → Docs tab.
     # Written in Markdown; supports headers, tables, and fenced code blocks.
@@ -454,7 +503,73 @@ duplicated regardless of how many times the task executes.
     )
 
     # =========================================================================
-    # TASK 2 — dbt_build
+    # TASK 2 — extract_hn_stories
+    # =========================================================================
+    # Invokes the HackerNewsClient ingestion pipeline via a thin wrapper.
+    #
+    # Execution sequence inside the worker process:
+    #   1. Fetch the top story ID list from HN Firebase API (no auth needed)
+    #   2. Fetch individual story details (up to HN_TOP_STORY_LIMIT stories)
+    #   3. Validate each story (must have id and title)
+    #   4. Upsert each story into public.hn_stories_raw using psycopg2
+    #      ON CONFLICT (story_id) DO UPDATE — refreshes mutable fields
+    #
+    # Required environment variables:
+    #   POSTGRES_HOST / POSTGRES_PORT / POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
+    #   HN_* variables (optional — defaults are in the client)
+    # =========================================================================
+    extract_hn_stories = PythonOperator(
+        task_id="extract_hn_stories",
+        python_callable=run_hn_ingestion,
+        execution_timeout=timedelta(minutes=15),
+        doc_md="""
+## Task: extract_hn_stories
+
+**Operator**: `PythonOperator` &nbsp;|&nbsp; **Callable**: `run_hn_ingestion`
+
+### Purpose
+Ingests current top stories from Hacker News and persists each story
+as a row in the PostgreSQL warehouse. This is the **E** (Extract) step
+for the Hacker News data source.
+
+### Source
+| API Endpoint | URL |
+|---|---|
+| Top Stories | https://hacker-news.firebaseio.com/v0/topstories.json |
+| Story Detail | https://hacker-news.firebaseio.com/v0/item/{id}.json |
+
+The HN API is public and unauthenticated — no API key required.
+Up to **HN_TOP_STORY_LIMIT** stories are fetched per run (default: 50).
+
+### Destination
+Table: `public.hn_stories_raw` (PostgreSQL warehouse service)
+
+| Column | Description |
+|---|---|
+| `story_id` | HN item ID — primary key |
+| `title` | Story headline text |
+| `author` | HN username of the submitter |
+| `url` | External link (NULL for text posts) |
+| `score` | Current upvote count (mutable) |
+| `time` | Unix timestamp of submission |
+| `descendants` | Comment count (mutable) |
+| `type` | Item type (story, job, poll) |
+| `raw_json` | Complete JSONB payload |
+| `fetched_at` | Pipeline ingestion timestamp |
+
+### Idempotency
+Safe to re-run. Uses `ON CONFLICT (story_id) DO UPDATE` to refresh
+mutable fields (score, descendants) on re-ingestion.
+
+### Resilience
+- **Retries**: 3 attempts with exponential backoff
+- **Timeout**: 15 minutes
+- **Per-request**: Configurable retry + backoff at the HTTP level
+        """,
+    )
+
+    # =========================================================================
+    # TASK 3 — dbt_build
     # =========================================================================
     # Executes `dbt build`, which compiles and materialises all project models
     # in the topological order dictated by their ref() dependency graph:
@@ -667,4 +782,4 @@ dbt_test = BashOperator(
     #   dbt_test >> refresh_dashboard      # trigger a BI tool cache flush
     #   dbt_test >> export_to_bigquery     # forward Gold tables to cloud DW
     # =========================================================================
-    extract_github_events >> dbt_build >> dbt_test
+    extract_github_events >> extract_hn_stories >> dbt_build >> dbt_test

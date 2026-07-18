@@ -425,3 +425,192 @@ models:
           - not_null:
               config:
                 severity: error
+
+  # ==========================================================================
+  # DIMENSION: dim_hn_story
+  # ==========================================================================
+  - name: dim_hn_story
+    description: >
+      Gold layer dimension table containing Hacker News story master data.
+      Grain: One row per unique story (story_id).
+    columns:
+      - name: hn_story_key
+        description: "Surrogate key - MD5 hash of story_id. Format: 32-character hex string."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: story_id
+        description: "Natural business key - Hacker News item identifier."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: title
+        description: "Story headline text as submitted to Hacker News."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: author
+        description: "HN username of the story submitter."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: score
+        description: "Current upvote count (mutable, refreshed on re-ingestion)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: comment_count
+        description: "Total number of comments on the story."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: published_at
+        description: "Timestamp when the story was submitted to Hacker News."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  # ==========================================================================
+  # FACT: fct_hn_daily_activity
+  # ==========================================================================
+  - name: fct_hn_daily_activity
+    description: >
+      Gold layer fact table tracking daily Hacker News activity.
+      Grain: One row per calendar date.
+    columns:
+      - name: activity_date
+        description: "Calendar date for daily aggregation."
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: story_count
+        description: "Number of stories published on this date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_score
+        description: "Sum of all story scores on this date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: avg_score
+        description: "Average story score on this date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_comments
+        description: "Sum of all comment counts on this date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: unique_authors
+        description: "Count of distinct story authors on this date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: stories_with_url_pct
+        description: "Percentage of stories linking to an external URL (vs text posts)."
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  # ==========================================================================
+  # FACT: fct_hn_repo_mentions
+  # ==========================================================================
+  - name: fct_hn_repo_mentions
+    description: >
+      Gold layer fact table tracking repository mentions in Hacker News stories.
+      Cross-source analytics bridge connecting HN community traction to
+      tracked GitHub repositories.
+      Grain: One row per (mentioned_repo, activity_date) combination.
+    columns:
+      - name: mentioned_repo
+        description: "Canonical repository name (matches dim_repository.repo_name)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: error
+
+      - name: activity_date
+        description: "Calendar date of the mention."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: mention_count
+        description: "Number of HN stories mentioning this repo on this date."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_score
+        description: "Sum of HN upvotes across all mentioning stories (community score)."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: total_comments
+        description: "Sum of comments across all mentioning stories."
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: created_at
+        description: "System audit tracking timestamp (UTC)."
+        tests:
+          - not_null:
+              config:
+                severity: error

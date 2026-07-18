@@ -101,6 +101,7 @@ def render_bar_chart(
     barmode: str = "group",
     orientation: str = "v",
     color: str | None = None,
+    width: float | None = None,
 ) -> None:
     """
     Render a Plotly bar chart (grouped or stacked).
@@ -113,6 +114,7 @@ def render_bar_chart(
         barmode:     "group" (default) or "stack"
         orientation: "v" (vertical, default) or "h" (horizontal)
         color:       Optional column for color grouping
+        width:       Optional width of the bars (float)
     """
     fig = px.bar(
         df,
@@ -124,7 +126,9 @@ def render_bar_chart(
         orientation=orientation,
         height=_HEIGHT,
     )
-    fig.update_layout(margin=_MARGIN, legend_title_text="")
+    if width is not None:
+        fig.update_traces(width=width)
+    fig.update_layout(margin=_MARGIN, legend_title_text="", xaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
 
 

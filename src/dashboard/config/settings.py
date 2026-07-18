@@ -41,8 +41,12 @@ def get_db_config() -> dict:
 
 
 # Project-level constants shared across dashboard pages
-APP_TITLE       = "PipeOne Analytics"
+APP_TITLE       = "PipeOne — Developer Intelligence"
 APP_ICON        = "📊"
 REPOS           = ["facebook/react", "microsoft/vscode", "vercel/next.js"]
 GOLD_SCHEMA     = "public"   # dbt Gold models materialise in public schema
 CACHE_TTL_SEC   = 300        # 5 minutes — refresh interval for cached DataFrames
+
+# Hacker News Gold tables — used by Pipeline Health for monitoring
+HN_GOLD_TABLES  = ["dim_hn_story", "fct_hn_daily_activity", "fct_hn_repo_mentions"]
+

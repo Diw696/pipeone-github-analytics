@@ -37,15 +37,18 @@ st.divider()
 st.subheader("Project Overview")
 st.markdown(
     """
-    **PipeOne** is an end-to-end GitHub Analytics Data Engineering project.
-
+    **PipeOne** is an end-to-end Developer Intelligence Platform.
+ 
     It demonstrates a complete, production-style data pipeline that:
-    - Ingests live GitHub events (push, pull request) via the GitHub REST API
-    - Stores raw events in a PostgreSQL data warehouse
+    - Ingests software engineering signals from multiple sources:
+      1. **GitHub REST API** (live push and pull request events)
+      2. **Hacker News Firebase API** (top stories, score, comments, links)
+    - Stores raw signals in a PostgreSQL data warehouse
     - Transforms data through three dbt layers (Bronze → Silver → Gold)
-    - Orchestrates the full pipeline with Apache Airflow
+    - Integrates cross-source analytics by cross-referencing repository names in HN titles
+    - Orchestrates the full multi-source pipeline with Apache Airflow
     - Presents insights through this Streamlit analytics dashboard
-
+ 
     **Tracked Repositories:**
     - `facebook/react` — JavaScript UI library
     - `microsoft/vscode` — TypeScript code editor
@@ -61,37 +64,38 @@ st.subheader("System Architecture")
 st.markdown(
     """
     ```
-    ┌─────────────────────────────────────────────────────────────────┐
-    │                     PipeOne Data Pipeline                       │
-    └─────────────────────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │              PipeOne Multi-Source Developer Intelligence                │
+    └─────────────────────────────────────────────────────────────────────────┘
 
-    GitHub REST API
-         │
-         │  Python requests (src/ingestion/github_client.py)
-         ▼
-    PostgreSQL — github_events_raw
-         │
-         │  dbt Bronze (staging models)
-         │  Light selection, no transformation
-         ▼
-    dbt Silver — int_push_events, int_pull_requests
-         │
-         │  Business rules, typing, deduplication
-         ▼
-    dbt Gold — dim_repository, dim_contributor,
-               fct_github_daily_activity,
-               fct_contributor_daily_activity
-         │
-         │  Pre-computed metrics, surrogate keys, quality tests
-         ▼
-    Apache Airflow — pipeone_pipeline DAG
-         │
-         │  Orchestrates: ingest → dbt run → dbt test
-         ▼
-    Streamlit Analytics Dashboard  ← You are here
-         │
-         │  Reads from Gold Layer only
-         └──────────────────────────────────────────────
+        GitHub API                                   Hacker News API
+            │                                               │
+            │ Ingestion Ingestor                            │ Ingestion Client
+            ▼                                               ▼
+    PostgreSQL: github_events_raw                   PostgreSQL: hn_stories_raw
+            │                                               │
+            │ dbt Bronze (staging)                          │ dbt Bronze (staging)
+            ▼                                               ▼
+    dbt Bronze: stg_github_events                   dbt Bronze: stg_hn_stories
+            │                                               │
+            │ dbt Silver (intermediate)                     │ dbt Silver (intermediate)
+            ▼                                               ▼
+    dbt Silver: int_push_events                     dbt Silver: int_hn_stories
+                int_pull_requests                               int_hn_repo_mentions
+            │                                               │
+            └───────────────┬───────────────────────────────┘
+                            │
+                            │ dbt Gold (analytics-ready serving layer)
+                            ▼
+    dbt Gold:   dim_repository, dim_contributor, dim_hn_story
+                fct_github_daily_activity, fct_contributor_daily_activity
+                fct_hn_daily_activity, fct_hn_repo_mentions
+                            │
+                            ▼
+               Apache Airflow Ingestion DAG (pipeone_pipeline)
+                            │
+                            ▼
+               Streamlit Analytics Dashboard (You are here)
     ```
     """
 )
@@ -105,17 +109,17 @@ st.markdown(
     """
     PipeOne implements the **Medallion Architecture** — a layered data
     transformation pattern that separates concerns across three quality tiers:
-
-    | Layer | dbt Models | Purpose |
-    |---|---|---|
-    | **Bronze** (Staging) | `stg_github_events` | Raw field selection. Minimal transformation. Closest to source. |
-    | **Silver** (Intermediate) | `int_push_events`, `int_pull_requests` | Business rule application. Type casting. Deduplication. Event classification. |
-    | **Gold** (Final) | `dim_repository`, `dim_contributor`, `fct_github_daily_activity`, `fct_contributor_daily_activity` | Conformed dimensions. Fact tables. Pre-computed metrics. Surrogate keys. dbt quality tests. |
-
-    The dashboard reads **only from the Gold Layer**. This ensures:
-    - All metrics are defined once, in SQL, and tested by dbt
-    - The dashboard cannot show a metric that has not been validated
-    - Metric definitions change in dbt — the dashboard reflects changes automatically
+ 
+    | Layer | GitHub dbt Models | Hacker News dbt Models | Purpose |
+    |---|---|---|---|
+    | **Bronze** (Staging) | `stg_github_events` | `stg_hn_stories` | Raw field selection. Minimal transformation. |
+    | **Silver** (Intermediate) | `int_push_events`, `int_pull_requests` | `int_hn_stories`, `int_hn_repo_mentions` | Typing. Deduplication. Regex mention pattern matching. |
+    | **Gold** (Final Serving) | `dim_repository`, `dim_contributor`, `fct_github_daily_activity`, `fct_contributor_daily_activity` | `dim_hn_story`, `fct_hn_daily_activity`, `fct_hn_repo_mentions` | Conformed dimensions. Aggregated daily facts. Cross-source mention metrics. dbt quality tests. |
+ 
+    The dashboard reads **only from the Gold Layer** and mention-bridge Silver layer. This ensures:
+    - All metrics are defined once in SQL and tested by dbt.
+    - The dashboard cannot show a metric that has not been validated by schema quality tests.
+    - Definitions change in dbt, and the dashboard reflects changes automatically.
     """
 )
 st.divider()
@@ -129,6 +133,7 @@ stack_data = {
     "Tool": [
         "Python",
         "GitHub REST API",
+        "Hacker News Firebase API",
         "PostgreSQL",
         "dbt (data build tool)",
         "Apache Airflow",
@@ -140,8 +145,9 @@ stack_data = {
     ],
     "Role": [
         "Data ingestion scripting and orchestration logic",
-        "Source of GitHub push and pull request events",
-        "Central data warehouse — raw, Bronze, Silver, and Gold layers",
+        "Source of GitHub activity events",
+        "Source of community stories and traction upvotes",
+        "Central data warehouse storing raw, Bronze, Silver, and Gold layers",
         "SQL transformation framework — models, tests, documentation",
         "Pipeline orchestration — scheduling and DAG management",
         "Analytics dashboard — presentation layer",
@@ -165,37 +171,30 @@ st.subheader("End-to-End Project Workflow")
 st.markdown(
     """
     **Step 1 — Ingestion**
-    The Python ingestion script polls the GitHub REST API for `PushEvent` and
-    `PullRequestEvent` entries across the three tracked repositories.
-    Each event is stored as a raw JSON payload in `github_events_raw` (PostgreSQL).
-
+    The Python ingestion scripts independently extract signals from the GitHub REST API (events)
+    and the Hacker News Firebase API (top stories). Raw data is stored in the PostgreSQL warehouse.
+ 
     **Step 2 — Bronze Transformation (dbt)**
-    dbt staging models select relevant fields from `github_events_raw`.
-    No business logic is applied. Output: clean, typed source data.
-
+    dbt staging models select and type fields from raw tables (`github_events_raw` and `hn_stories_raw`).
+ 
     **Step 3 — Silver Transformation (dbt)**
-    Intermediate models apply business rules:
-    parsing push commit counts, classifying PR actions (opened/closed/merged),
-    and linking events to their source repository.
-
+    Intermediate models apply clean typing and deduplication, and extract mentions of our tracked
+    repositories from Hacker News story titles using PostgreSQL regex word boundaries.
+ 
     **Step 4 — Gold Transformation (dbt)**
-    Final models build the analytics-ready tables:
-    - `dim_repository` — one row per repo, all-time metrics denormalized
-    - `dim_contributor` — one row per contributor, type-classified
-    - `fct_github_daily_activity` — daily metrics per repo with pre-computed rates
-    - `fct_contributor_daily_activity` — daily metrics per contributor per repo
-
-    dbt quality tests (unique, not_null, accepted_values, relationships) run
-    after each transformation to validate the Gold Layer before it is served.
-
+    Final models build conformed dimension and daily fact tables:
+    - `dim_repository` / `dim_contributor` / `dim_hn_story` — Entity dimensions
+    - `fct_github_daily_activity` / `fct_hn_daily_activity` — Daily metrics
+    - `fct_hn_repo_mentions` — Repository mention counts and upvote scores
+ 
+    dbt quality tests (unique, not_null, accepted_values, relationships) run to validate tables before serving.
+ 
     **Step 5 — Orchestration (Airflow)**
-    The `pipeone_pipeline` DAG coordinates all steps:
-    ingest → dbt run (Bronze) → dbt run (Silver) → dbt run (Gold) → dbt test.
-    The DAG runs on a schedule and logs every execution result.
-
+    The Airflow DAG runs tasks sequentially:
+    GitHub ingest → HN ingest → dbt build → dbt test.
+ 
     **Step 6 — Presentation (This Dashboard)**
-    Streamlit reads from the Gold Layer. Every chart and metric in this
-    dashboard traces back to a specific dbt model and a tested column.
+    Streamlit visualizes conformed Gold Layer metrics with side-by-side comparison.
     """
 )
 st.divider()
@@ -206,13 +205,13 @@ st.divider()
 st.subheader("Developer")
 st.markdown(
     """
-    **Project:** PipeOne — GitHub Analytics Data Engineering Pipeline
-
+    **Project:** PipeOne — Developer Intelligence Platform
+ 
     **Developer:** Diwakar Kaushik
-
-    **Project Scope:** End-to-end data engineering — API ingestion, warehouse design,
+ 
+    **Project Scope:** Multi-source data engineering — API ingestion, warehouse design,
     dbt transformation (Bronze/Silver/Gold), Airflow orchestration, and analytics dashboard.
-
+ 
     **GitHub Repository:** [github.com/Diw696/pipeone-github-analytics](https://github.com/Diw696/pipeone-github-analytics)
     """
 )

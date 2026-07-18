@@ -38,16 +38,17 @@ st.set_page_config(
 def home():
     """Landing page content rendered when the user selects Home."""
 
-    st.title("📊 PipeOne Analytics")
-    st.markdown("### GitHub Activity Intelligence Platform")
+    st.title("📊 PipeOne — Developer Intelligence")
+    st.markdown("### Multi-Source Platform Evolution")
     st.markdown(
-        "An end-to-end Data Engineering project that ingests GitHub events, "
-        "transforms them through a Medallion Architecture (Bronze → Silver → Gold), "
+        "An end-to-end Developer Intelligence Platform that ingests software engineering signals "
+        "from multiple sources (GitHub events + Hacker News stories), "
+        "transforms them through a Medallion Architecture (Bronze → Silver → Gold) using dbt, "
         "and presents insights through this analytics dashboard."
     )
     st.divider()
 
-    # Navigation guide — 4 cards
+    # Navigation guide — 5 cards
     st.subheader("Dashboard Pages")
     st.markdown("Use the sidebar to navigate between pages.")
 
@@ -60,7 +61,7 @@ def home():
             **Business question:** What is happening overall?
 
             Platform-wide KPIs, daily activity trends, and repository
-            comparison across all three tracked repositories.
+            comparison across all three tracked repositories, with a Community Pulse teaser.
             """
         )
         st.markdown(
@@ -72,6 +73,15 @@ def home():
             contributor profiles with activity timelines.
             """
         )
+        st.markdown(
+            """
+            #### 🔥 Community Traction
+            **Business question:** How are our tracked projects trending in the developer community?
+
+            Deep-dive Hacker News analytics, repository mentions, daily story volume,
+            top community authors, and trending headlines.
+            """
+        )
 
     with col2:
         st.markdown(
@@ -79,8 +89,8 @@ def home():
             #### 📂 Repository Analytics
             **Business question:** Which repository is performing best?
 
-            Per-repository KPIs, commit and push trends, and PR merge
-            velocity analysis.
+            Per-repository KPIs, commit and push trends, PR merge
+            velocity analysis, and Hacker News community mentions.
             """
         )
         st.markdown(
@@ -89,7 +99,7 @@ def home():
             **Business question:** Can I trust this data?
 
             Gold Layer table freshness, row counts, data coverage, and
-            pipeline lifecycle status.
+            pipeline lifecycle status across both GitHub and Hacker News ingestion pipelines.
             """
         )
 
@@ -101,12 +111,12 @@ def home():
         """
         | Stage | Tool | Purpose |
         |---|---|---|
-        | **Ingestion** | Python + GitHub REST API | Fetch push and PR events |
-        | **Warehouse** | PostgreSQL | Store raw events |
-        | **Bronze** | dbt staging | Select and type raw fields |
-        | **Silver** | dbt intermediate | Apply business rules |
+        | **Ingestion** | Python + GitHub & HN APIs | Fetch GitHub activity events and Hacker News stories |
+        | **Warehouse** | PostgreSQL | Store raw events and story payloads |
+        | **Bronze** | dbt staging | Select, clean, and type raw fields |
+        | **Silver** | dbt intermediate | Parse payloads, normalize data, and detect repository mentions |
         | **Gold** | dbt final models | Analytics-ready dimensions and facts |
-        | **Orchestration** | Apache Airflow | Schedule and monitor the full pipeline |
+        | **Orchestration** | Apache Airflow | Schedule and monitor the full multi-source pipeline |
         | **Dashboard** | Streamlit | Present Gold Layer metrics (you are here) |
         """
     )
@@ -123,7 +133,7 @@ def home():
     with r3:
         st.metric(label="vercel/next.js", value="JavaScript", delta="~125K ⭐")
 
-    st.caption("Navigate to **Overview** in the sidebar to begin exploring the data.")
+    st.caption("Navigate to any page in the sidebar to begin exploring the data.")
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +148,7 @@ pg = st.navigation(
         st.Page("pages/01_Overview.py",              title="Overview",               icon="📊"),
         st.Page("pages/02_Repository_Analytics.py",  title="Repository Analytics",   icon="📂"),
         st.Page("pages/03_Contributor_Analytics.py", title="Contributor Analytics",  icon="👤"),
+        st.Page("pages/06_Community_Traction.py",    title="Community Traction",     icon="🔥"),
         st.Page("pages/04_Pipeline_Health.py",       title="Pipeline Health",        icon="🩺"),
         st.Page("pages/05_About.py",                 title="About",                  icon="ℹ️"),
     ]

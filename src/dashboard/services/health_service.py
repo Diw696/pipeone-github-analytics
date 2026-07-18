@@ -270,3 +270,126 @@ def get_contributor_count() -> int:
     query = "SELECT COUNT(*) AS cnt FROM dim_contributor"
     df = pd.read_sql(query, conn)
     return int(df.iloc[0]["cnt"])
+
+
+@st.cache_data(ttl=_FRESHNESS_TTL)
+def get_hn_gold_table_stats() -> pd.DataFrame:
+    """
+    Return row count and last-updated timestamp for each Hacker News Gold table.
+
+    Source: dim_hn_story, fct_hn_daily_activity, fct_hn_repo_mentions
+
+    Returns:
+        DataFrame columns: table_name, row_count, last_updated
+    """
+    conn = get_connection()
+    query = """
+        SELECT 'dim_hn_story'          AS table_name,
+               COUNT(*)                AS row_count,
+               MAX(created_at)         AS last_updated
+        FROM dim_hn_story
+
+        UNION ALL
+
+        SELECT 'fct_hn_daily_activity',
+               COUNT(*),
+               MAX(created_at)
+        FROM fct_hn_daily_activity
+
+        UNION ALL
+
+        SELECT 'fct_hn_repo_mentions',
+               COUNT(*),
+               MAX(created_at)
+        FROM fct_hn_repo_mentions
+
+        ORDER BY table_name
+    """
+    df = pd.read_sql(query, conn)
+    df["last_updated"] = pd.to_datetime(df["last_updated"], utc=True)
+    return df
+
+
+@st.cache_data(ttl=_FRESHNESS_TTL)
+def get_hn_pipeline_lifecycle() -> dict:
+    """
+    Return all three Hacker News pipeline lifecycle timestamps.
+
+    Returns:
+        dict with keys:
+          last_ingested      (pd.Timestamp UTC-aware, or None)
+              Stage 1 — MAX(fetched_at) from hn_stories_raw
+          data_coverage_date (str ISO date, or "Unknown")
+              Stage 2 — MAX(activity_date) from fct_hn_daily_activity
+          gold_built_at      (pd.Timestamp UTC-aware, or None)
+              Stage 3 — MAX(created_at) across all HN Gold tables
+    """
+    conn = get_connection()
+
+    # Stage 1: Ingestion
+    ingestion_df = pd.read_sql(
+        "SELECT MAX(fetched_at) AS last_ingested FROM hn_stories_raw",
+        conn,
+    )
+
+    # Stage 2: Coverage
+    coverage_df = pd.read_sql(
+        "SELECT MAX(activity_date) AS data_coverage_date "
+        "FROM fct_hn_daily_activity",
+        conn,
+    )
+
+    # Stage 3: Gold Build
+    gold_df = pd.read_sql(
+        """
+        SELECT MAX(ts) AS gold_built_at
+        FROM (
+            SELECT MAX(created_at) AS ts FROM dim_hn_story
+            UNION ALL
+            SELECT MAX(created_at) FROM fct_hn_daily_activity
+            UNION ALL
+            SELECT MAX(created_at) FROM fct_hn_repo_mentions
+        ) sub
+        """,
+        conn,
+    )
+
+    raw_ingested = ingestion_df.iloc[0]["last_ingested"]
+    raw_coverage = coverage_df.iloc[0]["data_coverage_date"]
+    raw_gold = gold_df.iloc[0]["gold_built_at"]
+
+    return {
+        "last_ingested": (
+            pd.to_datetime(raw_ingested, utc=True)
+            if pd.notna(raw_ingested) else None
+        ),
+        "data_coverage_date": str(raw_coverage) if pd.notna(raw_coverage) else "Unknown",
+        "gold_built_at": (
+            pd.to_datetime(raw_gold, utc=True)
+            if pd.notna(raw_gold) else None
+        ),
+    }
+
+
+@st.cache_data(ttl=CACHE_TTL_SEC)
+def get_hn_data_coverage() -> pd.DataFrame:
+    """
+    Return date range coverage for Hacker News activity.
+
+    Source: fct_hn_daily_activity
+
+    Returns:
+        DataFrame columns: source_name, first_active_date, last_active_date,
+                            days_covered
+    """
+    conn = get_connection()
+    query = """
+        SELECT
+            'Hacker News Top Stories' AS source_name,
+            MIN(activity_date) AS first_active_date,
+            MAX(activity_date) AS last_active_date,
+            (MAX(activity_date) - MIN(activity_date)) AS days_covered
+        FROM fct_hn_daily_activity
+    """
+    return pd.read_sql(query, conn)
+

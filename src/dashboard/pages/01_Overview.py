@@ -248,3 +248,50 @@ with col_c:
     val = gold_built_at.strftime("%Y-%m-%d %H:%M UTC") if gold_built_at else "—"
     st.metric(label="dbt Build Timestamp", value=val)
 
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Community Pulse (Hacker News Teaser)
+# ---------------------------------------------------------------------------
+st.subheader("🔥 Community Pulse")
+st.caption(
+    "How are our tracked open-source projects trending in the developer community? "
+    "Here is a quick snapshot of Hacker News activity. Sourced from the Gold Layer."
+)
+
+import services.hn_service as hn_svc
+
+with st.spinner("Loading Hacker News Pulse..."):
+    hn_kpis = hn_svc.get_hn_platform_kpis()
+    mention_summary = hn_svc.get_hn_repo_mention_summary()
+
+if hn_kpis and hn_kpis.get("Total HN Stories", 0) > 0:
+    col_hn1, col_hn2, col_hn3, col_hn4 = st.columns(4)
+    with col_hn1:
+        st.metric("HN Stories Ingested", f"{hn_kpis['Total HN Stories']:,}")
+    with col_hn2:
+        st.metric("Average HN Score", f"{hn_kpis['Average Score']:,}")
+    with col_hn3:
+        st.metric("Total HN Comments", f"{hn_kpis['Total Comments']:,}")
+    with col_hn4:
+        st.metric("Unique Community Authors", f"{hn_kpis['Unique Authors']:,}")
+
+    # Small mention summary list/columns
+    if not mention_summary.empty:
+        st.markdown("#### Repository Mentions on Hacker News (All-Time)")
+        m_cols = st.columns(len(mention_summary))
+        for idx, row in mention_summary.iterrows():
+            with m_cols[idx % len(m_cols)]:
+                st.metric(
+                    label=row["mentioned_repo"],
+                    value=f"{int(row['total_mentions'])} mentions",
+                    delta=f"{int(row['total_score'])} upvotes 🌟"
+                )
+    
+    st.page_link("pages/06_Community_Traction.py", label="Explore Full Community Traction", icon="🔥")
+else:
+    st.info(
+        "No Hacker News data found. Run the ingestion pipeline and dbt build to populate Hacker News analytics."
+    )
+
+

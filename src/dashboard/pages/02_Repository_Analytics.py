@@ -128,18 +128,84 @@ else:
             y2_label="PRs Merged",
         )
     with col4:
-        # Only plot pr_merged_pct where it is not null (push-only days are null by design)
-        pct_df = daily_df.dropna(subset=["pr_merged_pct"])
-        if pct_df.empty:
-            st.info("No PR merge rate data available for this period.")
-        else:
-            charts.render_line_chart(
-                df=pct_df,
-                x="activity_date",
-                y="pr_merged_pct",
-                title="Daily PR Merge Rate",
-                y_label="Merge Rate (%)",
-            )
+        st.markdown("#### PR Performance Summary")
+        st.caption("Aggregate metrics over the selected period.")
+        
+        # Add spacing to vertically align with the adjacent chart
+        st.write("")
+        st.write("")
+        
+        total_opened = int(daily_df["pr_opened"].sum())
+        total_merged = int(daily_df["pr_merged"].sum())
+        merge_rate = (total_merged / total_opened * 100) if total_opened > 0 else 0.0
+        
+        sub_col1, sub_col2, sub_col3 = st.columns(3)
+        with sub_col1:
+            st.metric(label="PR Merge Rate", value=f"{merge_rate:.1f}%")
+        with sub_col2:
+            st.metric(label="Merged PRs", value=f"{total_merged:,}")
+        with sub_col3:
+            st.metric(label="Opened PRs", value=f"{total_opened:,}")
+
+import services.hn_service as hn_svc
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Community Mentions (Hacker News)
+# ---------------------------------------------------------------------------
+st.subheader("🔥 Hacker News Community Mentions")
+st.caption(
+    f"Tracked mentions and traction for **{selected_repo}** on Hacker News. "
+    f"Sourced from the Gold and Silver Layers."
+)
+
+with st.spinner("Loading Hacker News community mentions..."):
+    # Fetch mentions over time
+    hn_trends_df = hn_svc.get_hn_repo_mentions_over_time(selected_repo, start_date, end_date)
+    # Fetch recent HN stories
+    hn_stories_df = hn_svc.get_hn_repo_stories(selected_repo, limit=5)
+
+if not hn_trends_df.empty:
+    total_hn_mentions = int(hn_trends_df["mention_count"].sum())
+    total_hn_score = int(hn_trends_df["total_score"].sum())
+    total_hn_comments = int(hn_trends_df["total_comments"].sum())
+    
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric("Total HN Mentions", f"{total_hn_mentions:,}")
+    with col_m2:
+        st.metric("Total HN Upvotes (Score)", f"{total_hn_score:,}")
+    with col_m3:
+        st.metric("Total HN Comments", f"{total_hn_comments:,}")
+
+    # Only render trend chart when there are at least 4 historical data points
+    # (more than 3 aggregated time buckets) to communicate an actual trend.
+    if len(hn_trends_df) >= 4:
+        st.markdown("#### Mention Trend Over Time")
+        charts.render_area_chart(
+            df=hn_trends_df,
+            x="activity_date",
+            y="mention_count",
+            title=f"Daily Hacker News Mentions — {selected_repo}",
+        )
+else:
+    st.info("No Hacker News mentions found for this repository during the selected date range.")
+
+if not hn_stories_df.empty:
+    st.markdown(f"#### Recent Hacker News Stories mentioning {selected_repo}")
+    # format display table
+    display_stories = hn_stories_df.rename(columns={
+        "title": "Title",
+        "author": "Author",
+        "score": "Score",
+        "comment_count": "Comments",
+        "published_at": "Published At",
+        "url": "Link"
+    })
+    charts.render_dataframe_table(df=display_stories[["Title", "Author", "Score", "Comments", "Published At", "Link"]])
+else:
+    st.caption("No stories mentioning this repository found recently.")
 
 st.divider()
 

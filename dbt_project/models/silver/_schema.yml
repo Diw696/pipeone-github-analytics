@@ -311,3 +311,144 @@ models:
                 severity: error  # Required for freshness checks
           # Custom validation: No future timestamps
           # (Business rule test - see tests/no_future_timestamps.sql)
+
+  # ==========================================================================
+  # MODEL: int_hn_stories
+  # ==========================================================================
+  # Silver layer model containing cleaned Hacker News stories
+  # Grain: One row per valid HN story
+  # ==========================================================================
+  - name: int_hn_stories
+    description: >
+      Intermediate model that cleans and enriches Hacker News stories from the
+      Bronze staging layer. Filters to story-type items only, extracts URL domains,
+      and adds derived fields for downstream Gold layer aggregation.
+
+      This model is materialized as a VIEW for query freshness and storage efficiency.
+
+      Upstream: stg_hn_stories (filters to story_type = 'story')
+      Downstream: Gold layer dimensions and facts (dim_hn_story, fct_hn_daily_activity)
+
+    columns:
+      - name: story_id
+        description: >
+          Unique Hacker News item identifier. Serves as the primary key.
+          Inherited from Bronze layer (originally from HN Firebase API).
+        tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+      - name: title
+        description: >
+          Story headline text. Guaranteed non-null by the Silver filter.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: author
+        description: >
+          Hacker News username of the story submitter.
+          NULL is possible for deleted accounts.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: score
+        description: >
+          Current upvote count. Mutable — refreshed on re-ingestion.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: comment_count
+        description: >
+          Total comments on the story. Defaults to 0 via COALESCE.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: activity_date
+        description: >
+          Calendar date derived from published_at.
+          Used for daily aggregation in Gold layer.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: published_at
+        description: >
+          Timestamp when the story was submitted to Hacker News.
+          Converted from Unix timestamp in the Bronze layer.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: fetched_at
+        description: >
+          Timestamp when our pipeline ingested this story.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+  # ==========================================================================
+  # MODEL: int_hn_repo_mentions
+  # ==========================================================================
+  # Silver layer model detecting repository mentions in HN story titles
+  # Grain: One row per (story, mentioned_repo) combination
+  # ==========================================================================
+  - name: int_hn_repo_mentions
+    description: >
+      Intermediate model that detects mentions of PipeOne's tracked GitHub
+      repositories in Hacker News story titles using regex pattern matching.
+
+      Cross-source analytics bridge connecting HN community traction to
+      tracked GitHub repositories.
+
+      Grain: One row per (story, mentioned_repo) match.
+      A story mentioning both "React" and "Next.js" produces two rows.
+
+      Upstream: int_hn_stories (Silver layer)
+      Downstream: fct_hn_repo_mentions (Gold layer)
+
+    columns:
+      - name: story_id
+        description: >
+          HN story identifier. Not unique in this model — a story can
+          mention multiple repositories.
+        tests:
+          - not_null:
+              config:
+                severity: error
+
+      - name: mentioned_repo
+        description: >
+          Canonical repository name matched from the story title.
+          Always one of the three tracked PipeOne repositories.
+        tests:
+          - not_null:
+              config:
+                severity: error
+          - accepted_values:
+              values: ['facebook/react', 'microsoft/vscode', 'vercel/next.js']
+              config:
+                severity: error
+
+      - name: activity_date
+        description: >
+          Calendar date of the story publication.
+        tests:
+          - not_null:
+              config:
+                severity: error
+

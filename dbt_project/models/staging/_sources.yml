@@ -110,3 +110,119 @@ sources:
                 - Gold models aggregate metrics derived from parsed fields
             tests:
               - not_null
+
+  # ============================================================================
+  # SOURCE: hn_raw_source
+  # ============================================================================
+  # This source represents the raw Hacker News stories table created by the
+  # HN ingestion pipeline (src/ingestion/hn_client.py).
+  #
+  # Data Flow:
+  #   Hacker News Firebase API → Python Client → PostgreSQL (public.hn_stories_raw)
+  #
+  # Owner: Data Engineering Team
+  # Created: Multi-Source Evolution (July 2026)
+  # ============================================================================
+
+  - name: hn_raw_source
+    description: >
+      Raw Hacker News story data ingested from the official HN Firebase API.
+      This source contains top stories with complete metadata and raw JSON payloads.
+
+      Data is loaded via the Python HN ingestion client and stored with
+      individual typed columns plus the complete raw payload for downstream
+      transformations.
+
+      This is the Bronze layer input for the Hacker News connector.
+
+    database: pipeone_warehouse
+    schema: public
+
+    loaded_at_field: fetched_at
+
+    tables:
+      - name: hn_stories_raw
+        description: >
+          Raw Hacker News stories table containing story metadata and JSONB payloads
+          from the HN Firebase API. Each row represents a single top story
+          fetched during an ingestion run.
+
+          Schema:
+            - story_id: Unique HN item identifier (PRIMARY KEY)
+            - title: Story headline text
+            - author: HN username of the story submitter
+            - url: External URL the story links to (NULL for Ask HN / Show HN)
+            - score: Current upvote count (mutable — updated on re-ingestion)
+            - time: Unix timestamp when the story was submitted
+            - descendants: Number of comments (mutable — updated on re-ingestion)
+            - type: HN item type (usually 'story')
+            - raw_json: Complete JSONB payload from HN API
+            - fetched_at: Timestamp when our pipeline retrieved this story
+
+          Idempotency: Guaranteed by PRIMARY KEY on story_id with ON CONFLICT DO UPDATE.
+          Unlike GitHub events (immutable), HN stories are mutable — scores and
+          comment counts change over time. The upsert refreshes these fields.
+
+        columns:
+          - name: story_id
+            description: >
+              Unique Hacker News item identifier. Used as PRIMARY KEY.
+              Example: 41234567
+            tests:
+              - not_null
+              - unique
+
+          - name: title
+            description: >
+              Story headline text as submitted by the author.
+              May contain special characters and unicode.
+            tests:
+              - not_null
+
+          - name: author
+            description: >
+              Hacker News username of the person who submitted the story.
+              Example: 'pg', 'dang'
+
+          - name: url
+            description: >
+              External URL the story links to. NULL for text-only posts
+              (Ask HN, Show HN, polls).
+
+          - name: score
+            description: >
+              Current upvote count for the story. Mutable — refreshed
+              on each ingestion run via ON CONFLICT DO UPDATE.
+
+          - name: time
+            description: >
+              Unix timestamp (seconds since epoch) when the story was
+              originally submitted to Hacker News.
+            tests:
+              - not_null
+
+          - name: descendants
+            description: >
+              Total number of comments on the story. Mutable — refreshed
+              on each ingestion run.
+
+          - name: type
+            description: >
+              HN item type. Usually 'story' for top stories.
+              Other possible values: 'job', 'poll'.
+
+          - name: raw_json
+            description: >
+              Complete JSONB object from the HN Firebase API.
+              Preserves all fields including 'kids' (comment IDs),
+              'parts' (poll options), and any future API additions.
+            tests:
+              - not_null
+
+          - name: fetched_at
+            description: >
+              Timestamp (UTC) when our ingestion pipeline retrieved this story.
+              Used for freshness monitoring and pipeline health checks.
+            tests:
+              - not_null
+
