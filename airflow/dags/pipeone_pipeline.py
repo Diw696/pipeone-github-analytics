@@ -79,7 +79,9 @@ Maintainers
 from datetime import datetime, timedelta
 
 from airflow import DAG
+# pyrefly: ignore [missing-import]
 from airflow.operators.bash import BashOperator
+# pyrefly: ignore [missing-import]
 from airflow.operators.python import PythonOperator
 
 
