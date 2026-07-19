@@ -66,88 +66,7 @@ This section outlines the platform's multi-tier data pipeline structure, designe
  **Business Intelligence Presentation**:
    - A clean [Streamlit Analytical Presentation Dashboard] reads exclusively from the validated Gold tier layer, providing instant executive insights via separate presentation modules: Overview Analytics, Community Traction Insights, and Pipeline Health Telemetry.
 
-```mermaid
-graph LR
-
-%% ===== Styles =====
-classDef source fill:#E0F2FE,stroke:#0284C7,stroke-width:2px,color:#0369A1;
-classDef process fill:#F8FAFC,stroke:#475569,stroke-width:2px,color:#334155;
-classDef db fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#B45309;
-classDef dbt fill:#DCFCE7,stroke:#16A34A,stroke-width:2px,color:#15803D;
-classDef dashboard fill:#FCE7F3,stroke:#DB2777,stroke-width:2px,color:#BE185D;
-classDef orchestration fill:#F3E8FF,stroke:#7C3AED,stroke-width:2px,color:#6D28D9;
-classDef insight fill:#E0FCEB,stroke:#059669,stroke-width:2px,color:#047857;
-
-%% ===== Sources =====
-subgraph SOURCES["External Data Sources"]
-GH["GitHub REST API"]
-HN["Hacker News API"]
-end
-
-%% ===== Ingestion =====
-subgraph INGEST["Python Ingestion Layer"]
-PY["github_client.py<br/>hn_client.py"]
-end
-
-%% ===== Storage =====
-subgraph STORAGE["PostgreSQL Warehouse"]
-DB[("Raw JSONB Storage")]
-end
-
-%% ===== Transformation =====
-subgraph DBT["dbt Medallion Architecture"]
-BRONZE["Bronze<br/>Clean & Stage"]
-
-SILVER["Silver<br/>Transform"]
-
-GOLD["Gold<br/>Analytics"]
-end
-
-%% ===== Quality =====
-QUALITY["dbt Build<br/>dbt Test<br/>✅ 128 Tests Passed"]
-
-%% ===== Dashboard =====
-subgraph DASH["Streamlit Dashboard"]
-
-VIEW["Repository Analytics<br/>Community Traction<br/>Contributor Insights<br/>Pipeline Health"]
-
-end
-
-%% ===== Output =====
-OUTPUT["Developer Intelligence"]
-
-%% ===== Orchestration =====
-AIRFLOW{{"Apache Airflow"}}
-
-%% ===== Flow =====
-GH --> PY
-HN --> PY
-
-PY --> DB
-
-DB --> BRONZE
-BRONZE --> SILVER
-SILVER --> GOLD
-
-GOLD --> QUALITY
-
-QUALITY --> VIEW
-
-VIEW --> OUTPUT
-
-%% ===== Orchestration =====
-AIRFLOW -.-> PY
-AIRFLOW -.-> QUALITY
-
-%% ===== Classes =====
-class GH,HN source
-class PY process
-class DB db
-class BRONZE,SILVER,GOLD dbt
-class VIEW dashboard
-class AIRFLOW orchestration
-class OUTPUT insight
-```
+<img width="4841" height="4927" alt="flowchat_pipeone" src="https://github.com/user-attachments/assets/bd74bcb0-0c57-4e41-b72e-e04db61b4650" />
 
 ---
 
@@ -199,7 +118,7 @@ The interactive Streamlit dashboard serves different insights across its pages:
 | **Docker Compose** | Isolated local environment containerization | `compose-v2` |
 | **Plotly / Pandas** | Data parsing, aggregations, and charts | Standard |
 
----
+
 ## Project Structure
 ```
 pipeone/
