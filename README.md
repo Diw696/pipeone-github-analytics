@@ -48,6 +48,9 @@ By combining **GitHub** repository activity with **Hacker News** mentions and en
 
 This section outlines the platform's multi-tier data pipeline structure, designed for high throughput, data cleanliness, and clear analytical observability.
 
+<img width="1200" height="670" alt="diagram" src="https://github.com/user-attachments/assets/95cbb59f-cdcc-437f-989d-3164db474376" />
+
+
 ### 🔄 System Architecture Flowchart
  **Data Ingestion Layer**: 
    - [GitHub REST API] and [Hacker News Firebase API] act as concurrent external ingestion endpoints.
